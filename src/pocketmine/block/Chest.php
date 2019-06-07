@@ -23,81 +23,62 @@ declare(strict_types=1);
 
 namespace pocketmine\block;
 
+use pocketmine\block\utils\BlockDataValidator;
 use pocketmine\item\Item;
 use pocketmine\math\AxisAlignedBB;
-use pocketmine\math\Bearing;
 use pocketmine\math\Facing;
 use pocketmine\math\Vector3;
 use pocketmine\Player;
 use pocketmine\tile\Chest as TileChest;
-use pocketmine\tile\Tile;
 
 class Chest extends Transparent{
-
-	protected $id = self::CHEST;
 
 	/** @var int */
 	protected $facing = Facing::NORTH;
 
-	public function __construct(){
-
+	public function __construct(BlockIdentifier $idInfo, string $name, ?BlockBreakInfo $breakInfo = null){
+		parent::__construct($idInfo, $name, $breakInfo ?? new BlockBreakInfo(2.5, BlockToolType::TYPE_AXE));
 	}
 
 	protected function writeStateToMeta() : int{
 		return $this->facing;
 	}
 
-	public function readStateFromMeta(int $meta) : void{
-		$this->facing = $meta;
+	public function readStateFromData(int $id, int $stateMeta) : void{
+		$this->facing = BlockDataValidator::readHorizontalFacing($stateMeta);
 	}
 
 	public function getStateBitmask() : int{
 		return 0b111;
 	}
 
-	public function getHardness() : float{
-		return 2.5;
-	}
-
-	public function getName() : string{
-		return "Chest";
-	}
-
-	public function getToolType() : int{
-		return BlockToolType::TYPE_AXE;
-	}
-
 	protected function recalculateBoundingBox() : ?AxisAlignedBB{
 		//these are slightly bigger than in PC
-		return new AxisAlignedBB(0.025, 0, 0.025, 0.975, 0.95, 0.975);
+		return AxisAlignedBB::one()->contract(0.025, 0, 0.025)->trim(Facing::UP, 0.05);
 	}
 
-	public function place(Item $item, Block $blockReplace, Block $blockClicked, int $face, Vector3 $clickVector, Player $player = null) : bool{
-		$chest = null;
+	public function place(Item $item, Block $blockReplace, Block $blockClicked, int $face, Vector3 $clickVector, ?Player $player = null) : bool{
 		if($player !== null){
-			$this->facing = Bearing::toFacing(Bearing::opposite($player->getDirection()));
-		}
-
-		foreach([
-			Bearing::toFacing(Bearing::rotate($player->getDirection(), -1)),
-			Bearing::toFacing(Bearing::rotate($player->getDirection(), 1))
-		] as $side){
-			$c = $this->getSide($side);
-			if($c instanceof Chest and $c->isSameType($this) and $c->facing === $this->facing){
-				$tile = $this->getLevel()->getTile($c);
-				if($tile instanceof TileChest and !$tile->isPaired()){
-					$chest = $tile;
-					break;
-				}
-			}
+			$this->facing = Facing::opposite($player->getHorizontalFacing());
 		}
 
 		if(parent::place($item, $blockReplace, $blockClicked, $face, $clickVector, $player)){
-			$tile = Tile::createTile(Tile::CHEST, $this->getLevel(), TileChest::createNBT($this, $face, $item, $player));
-
-			if($chest instanceof TileChest and $tile instanceof TileChest){
-				$chest->pairWith($tile);
-				$tile->pairWith($chest);
+			$tile = $this->world->getTile($this);
+			if($tile instanceof TileChest){
+				foreach([
+					Facing::rotateY($this->facing, true),
+					Facing::rotateY($this->facing, false)
+				] as $side){
+					$c = $this->getSide($side);
+					if($c instanceof Chest and $c->isSameType($this) and $c->facing === $this->facing){
+						$pair = $this->world->getTile($c);
+						if($pair instanceof TileChest and !$pair->isPaired()){
+							$pair->pairWith($tile);
+							$tile->pairWith($pair);
+							break;
+						}
+					}
+				}
 			}
 
 			return true;
@@ -106,10 +87,10 @@ class Chest extends Transparent{
 		return false;
 	}
 
-	public function onActivate(Item $item, Player $player = null) : bool{
+	public function onInteract(Item $item, int $face, Vector3 $clickVector, ?Player $player = null) : bool{
 		if($player instanceof Player){
 
-			$chest = $this->getLevel()->getTile($this);
+			$chest = $this->getWorld()->getTile($this);
 			if($chest instanceof TileChest){
 				if(
 					!$this->getSide(Facing::UP)->isTransparent() or

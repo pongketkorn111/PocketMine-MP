@@ -23,6 +23,10 @@ declare(strict_types=1);
 
 namespace pocketmine\network\mcpe;
 
+use function zlib_decode;
+use function zlib_encode;
+use const ZLIB_ENCODING_DEFLATE;
+
 final class NetworkCompression{
 	public static $LEVEL = 7;
 	public static $THRESHOLD = 256;
@@ -31,8 +35,15 @@ final class NetworkCompression{
 
 	}
 
-	public static function decompress(string $payload) : string{
-		return zlib_decode($payload, 1024 * 1024 * 64); //Max 64MB
+	/**
+	 * @param string $payload
+	 * @param int    $maxDecodedLength default 2MB
+	 *
+	 * @return string
+	 * @throws \ErrorException
+	 */
+	public static function decompress(string $payload, int $maxDecodedLength = 1024 * 1024 * 2) : string{
+		return zlib_decode($payload, $maxDecodedLength);
 	}
 
 	/**

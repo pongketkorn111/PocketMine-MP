@@ -25,10 +25,15 @@ namespace pocketmine\block;
 
 use pocketmine\event\block\BlockGrowEvent;
 use pocketmine\item\Item;
-use pocketmine\item\ItemFactory;
 use pocketmine\math\Facing;
+use function array_rand;
+use function mt_rand;
 
 abstract class Stem extends Crops{
+
+	public function __construct(BlockIdentifier $idInfo, string $name, ?BlockBreakInfo $breakInfo = null){
+		parent::__construct($idInfo, $name, $breakInfo ?? BlockBreakInfo::instant());
+	}
 
 	abstract protected function getPlant() : Block;
 
@@ -40,7 +45,7 @@ abstract class Stem extends Crops{
 				$ev = new BlockGrowEvent($this, $block);
 				$ev->call();
 				if(!$ev->isCancelled()){
-					$this->getLevel()->setBlock($this, $ev->getNewState());
+					$this->getWorld()->setBlock($this, $ev->getNewState());
 				}
 			}else{
 				$grow = $this->getPlant();
@@ -52,11 +57,11 @@ abstract class Stem extends Crops{
 
 				$side = $this->getSide(Facing::HORIZONTAL[array_rand(Facing::HORIZONTAL)]);
 				$d = $side->getSide(Facing::DOWN);
-				if($side->getId() === self::AIR and ($d->getId() === self::FARMLAND or $d->getId() === self::GRASS or $d->getId() === self::DIRT)){
+				if($side->getId() === BlockLegacyIds::AIR and ($d->getId() === BlockLegacyIds::FARMLAND or $d->getId() === BlockLegacyIds::GRASS or $d->getId() === BlockLegacyIds::DIRT)){
 					$ev = new BlockGrowEvent($side, $grow);
 					$ev->call();
 					if(!$ev->isCancelled()){
-						$this->getLevel()->setBlock($side, $ev->getNewState());
+						$this->getWorld()->setBlock($side, $ev->getNewState());
 					}
 				}
 			}
@@ -65,7 +70,7 @@ abstract class Stem extends Crops{
 
 	public function getDropsForCompatibleTool(Item $item) : array{
 		return [
-			ItemFactory::get($this->getItemId(), 0, mt_rand(0, 2))
+			$this->asItem()->setCount(mt_rand(0, 2))
 		];
 	}
 }

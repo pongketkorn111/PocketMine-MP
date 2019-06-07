@@ -23,23 +23,24 @@ declare(strict_types=1);
 
 namespace pocketmine\block;
 
+use pocketmine\block\utils\Fallable;
+use pocketmine\block\utils\FallableTrait;
 use pocketmine\math\Facing;
 
-class ConcretePowder extends Fallable{
-
-	public function getHardness() : float{
-		return 0.5;
+class ConcretePowder extends Solid implements Fallable{
+	use FallableTrait {
+		onNearbyBlockChange as protected startFalling;
 	}
 
-	public function getToolType() : int{
-		return BlockToolType::TYPE_SHOVEL;
+	public function __construct(BlockIdentifier $idInfo, string $name, ?BlockBreakInfo $breakInfo = null){
+		parent::__construct($idInfo, $name, $breakInfo ?? new BlockBreakInfo(0.5, BlockToolType::TYPE_SHOVEL));
 	}
 
 	public function onNearbyBlockChange() : void{
 		if(($block = $this->checkAdjacentWater()) !== null){
-			$this->level->setBlock($this, $block);
+			$this->world->setBlock($this, $block);
 		}else{
-			parent::onNearbyBlockChange();
+			$this->startFalling();
 		}
 	}
 
@@ -59,7 +60,7 @@ class ConcretePowder extends Fallable{
 				continue;
 			}
 			if($this->getSide($i) instanceof Water){
-				return BlockFactory::get(Block::CONCRETE, $this->variant);
+				return BlockFactory::get(BlockLegacyIds::CONCRETE, $this->idInfo->getVariant());
 			}
 		}
 

@@ -29,19 +29,14 @@ use pocketmine\math\Vector3;
 use pocketmine\Player;
 
 class Flower extends Flowable{
-	public const TYPE_POPPY = 0;
-	public const TYPE_BLUE_ORCHID = 1;
-	public const TYPE_ALLIUM = 2;
-	public const TYPE_AZURE_BLUET = 3;
-	public const TYPE_RED_TULIP = 4;
-	public const TYPE_ORANGE_TULIP = 5;
-	public const TYPE_WHITE_TULIP = 6;
-	public const TYPE_PINK_TULIP = 7;
-	public const TYPE_OXEYE_DAISY = 8;
 
-	public function place(Item $item, Block $blockReplace, Block $blockClicked, int $face, Vector3 $clickVector, Player $player = null) : bool{
+	public function __construct(BlockIdentifier $idInfo, string $name, ?BlockBreakInfo $breakInfo = null){
+		parent::__construct($idInfo, $name, $breakInfo ?? BlockBreakInfo::instant());
+	}
+
+	public function place(Item $item, Block $blockReplace, Block $blockClicked, int $face, Vector3 $clickVector, ?Player $player = null) : bool{
 		$down = $this->getSide(Facing::DOWN);
-		if($down->getId() === Block::GRASS or $down->getId() === Block::DIRT or $down->getId() === Block::FARMLAND){
+		if($down->getId() === BlockLegacyIds::GRASS or $down->getId() === BlockLegacyIds::DIRT or $down->getId() === BlockLegacyIds::FARMLAND){
 			return parent::place($item, $blockReplace, $blockClicked, $face, $clickVector, $player);
 		}
 
@@ -50,7 +45,7 @@ class Flower extends Flowable{
 
 	public function onNearbyBlockChange() : void{
 		if($this->getSide(Facing::DOWN)->isTransparent()){
-			$this->getLevel()->useBreakOn($this);
+			$this->getWorld()->useBreakOn($this);
 		}
 	}
 

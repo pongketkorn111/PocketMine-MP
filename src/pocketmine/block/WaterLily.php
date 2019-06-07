@@ -31,26 +31,15 @@ use pocketmine\Player;
 
 class WaterLily extends Flowable{
 
-	protected $id = self::WATER_LILY;
-
-	public function __construct(){
-
-	}
-
-	public function getName() : string{
-		return "Lily Pad";
-	}
-
-	public function getHardness() : float{
-		return 0.6;
+	public function __construct(BlockIdentifier $idInfo, string $name, ?BlockBreakInfo $breakInfo = null){
+		parent::__construct($idInfo, $name, $breakInfo ?? new BlockBreakInfo(0.6));
 	}
 
 	protected function recalculateBoundingBox() : ?AxisAlignedBB{
-		static $f = 0.0625;
-		return new AxisAlignedBB($f, 0, $f, 1 - $f, 0.015625, 1 - $f);
+		return AxisAlignedBB::one()->contract(1 / 16, 0, 1 / 16)->trim(Facing::UP, 63 / 64);
 	}
 
-	public function place(Item $item, Block $blockReplace, Block $blockClicked, int $face, Vector3 $clickVector, Player $player = null) : bool{
+	public function place(Item $item, Block $blockReplace, Block $blockClicked, int $face, Vector3 $clickVector, ?Player $player = null) : bool{
 		if($blockClicked instanceof Water){
 			$up = $blockClicked->getSide(Facing::UP);
 			if($up->canBeReplaced()){
@@ -63,7 +52,7 @@ class WaterLily extends Flowable{
 
 	public function onNearbyBlockChange() : void{
 		if(!($this->getSide(Facing::DOWN) instanceof Water)){
-			$this->getLevel()->useBreakOn($this);
+			$this->getWorld()->useBreakOn($this);
 		}
 	}
 }

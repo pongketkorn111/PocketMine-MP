@@ -24,20 +24,20 @@ declare(strict_types=1);
 namespace pocketmine\metadata;
 
 use pocketmine\block\Block;
-use pocketmine\level\Level;
 use pocketmine\plugin\Plugin;
+use pocketmine\world\World;
 
 class BlockMetadataStore extends MetadataStore{
-	/** @var Level */
+	/** @var World */
 	private $owningLevel;
 
-	public function __construct(Level $owningLevel){
+	public function __construct(World $owningLevel){
 		$this->owningLevel = $owningLevel;
 	}
 
 	private function disambiguate(Block $block, string $metadataKey) : string{
-		if($block->getLevel() !== $this->owningLevel){
-			throw new \InvalidStateException("Block does not belong to world " . $this->owningLevel->getName());
+		if($block->getWorld() !== $this->owningLevel){
+			throw new \InvalidStateException("Block does not belong to world " . $this->owningLevel->getDisplayName());
 		}
 		return $block->x . ":" . $block->y . ":" . $block->z . ":" . $metadataKey;
 	}
@@ -50,11 +50,11 @@ class BlockMetadataStore extends MetadataStore{
 		return $this->hasMetadataInternal($this->disambiguate($subject, $metadataKey));
 	}
 
-	public function removeMetadata(Block $subject, string $metadataKey, Plugin $owningPlugin){
+	public function removeMetadata(Block $subject, string $metadataKey, Plugin $owningPlugin) : void{
 		$this->removeMetadataInternal($this->disambiguate($subject, $metadataKey), $owningPlugin);
 	}
 
-	public function setMetadata(Block $subject, string $metadataKey, MetadataValue $newMetadataValue){
+	public function setMetadata(Block $subject, string $metadataKey, MetadataValue $newMetadataValue) : void{
 		$this->setMetadataInternal($this->disambiguate($subject, $metadataKey), $newMetadataValue);
 	}
 }

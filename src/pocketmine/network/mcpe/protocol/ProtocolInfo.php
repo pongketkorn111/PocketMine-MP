@@ -39,15 +39,15 @@ interface ProtocolInfo{
 	/**
 	 * Actual Minecraft: PE protocol version
 	 */
-	public const CURRENT_PROTOCOL = 291;
+	public const CURRENT_PROTOCOL = 354;
 	/**
 	 * Current Minecraft PE version reported by the server. This is usually the earliest currently supported version.
 	 */
-	public const MINECRAFT_VERSION = 'v1.7.0';
+	public const MINECRAFT_VERSION = 'v1.11.0';
 	/**
 	 * Version number sent to clients in ping responses.
 	 */
-	public const MINECRAFT_VERSION_NETWORK = '1.7.0';
+	public const MINECRAFT_VERSION_NETWORK = '1.11.0';
 
 	public const LOGIN_PACKET = 0x01;
 	public const PLAY_STATUS_PACKET = 0x02;
@@ -64,7 +64,7 @@ interface ProtocolInfo{
 	public const ADD_ENTITY_PACKET = 0x0d;
 	public const REMOVE_ENTITY_PACKET = 0x0e;
 	public const ADD_ITEM_ENTITY_PACKET = 0x0f;
-	public const ADD_HANGING_ENTITY_PACKET = 0x10;
+
 	public const TAKE_ITEM_ENTITY_PACKET = 0x11;
 	public const MOVE_ENTITY_ABSOLUTE_PACKET = 0x12;
 	public const MOVE_PLAYER_PACKET = 0x13;
@@ -72,7 +72,7 @@ interface ProtocolInfo{
 	public const UPDATE_BLOCK_PACKET = 0x15;
 	public const ADD_PAINTING_PACKET = 0x16;
 	public const EXPLODE_PACKET = 0x17;
-	public const LEVEL_SOUND_EVENT_PACKET = 0x18;
+	public const LEVEL_SOUND_EVENT_PACKET_V1 = 0x18;
 	public const LEVEL_EVENT_PACKET = 0x19;
 	public const BLOCK_EVENT_PACKET = 0x1a;
 	public const ENTITY_EVENT_PACKET = 0x1b;
@@ -143,7 +143,7 @@ interface ProtocolInfo{
 	public const PURCHASE_RECEIPT_PACKET = 0x5c;
 	public const PLAYER_SKIN_PACKET = 0x5d;
 	public const SUB_CLIENT_LOGIN_PACKET = 0x5e;
-	public const W_S_CONNECT_PACKET = 0x5f;
+	public const AUTOMATION_CLIENT_CONNECT_PACKET = 0x5f;
 	public const SET_LAST_HURT_BY_PACKET = 0x60;
 	public const BOOK_EDIT_PACKET = 0x61;
 	public const NPC_REQUEST_PACKET = 0x62;
@@ -166,5 +166,15 @@ interface ProtocolInfo{
 	public const NETWORK_STACK_LATENCY_PACKET = 0x73;
 
 	public const SCRIPT_CUSTOM_EVENT_PACKET = 0x75;
+	public const SPAWN_PARTICLE_EFFECT_PACKET = 0x76;
+	public const AVAILABLE_ENTITY_IDENTIFIERS_PACKET = 0x77;
+	public const LEVEL_SOUND_EVENT_PACKET_V2 = 0x78;
+	public const NETWORK_CHUNK_PUBLISHER_UPDATE_PACKET = 0x79;
+	public const BIOME_DEFINITION_LIST_PACKET = 0x7a;
+	public const LEVEL_SOUND_EVENT_PACKET = 0x7b;
+	public const LECTERN_UPDATE_PACKET = 0x7c;
+	public const VIDEO_STREAM_CONNECT_PACKET = 0x7d;
+	public const MAP_CREATE_LOCKED_COPY_PACKET = 0x7e;
+	public const ON_SCREEN_TEXTURE_ANIMATION_PACKET = 0x7f;
 
 }

@@ -23,6 +23,7 @@ declare(strict_types=1);
 
 namespace pocketmine\block;
 
+use pocketmine\block\utils\BlockDataValidator;
 use pocketmine\entity\Entity;
 use pocketmine\entity\projectile\Arrow;
 use pocketmine\event\block\BlockBurnEvent;
@@ -31,24 +32,24 @@ use pocketmine\event\entity\EntityDamageByBlockEvent;
 use pocketmine\event\entity\EntityDamageEvent;
 use pocketmine\item\Item;
 use pocketmine\math\Facing;
+use function min;
+use function mt_rand;
 
 class Fire extends Flowable{
-
-	protected $id = self::FIRE;
 
 	/** @var int */
 	protected $age = 0;
 
-	public function __construct(){
-
+	public function __construct(BlockIdentifier $idInfo, string $name, ?BlockBreakInfo $breakInfo = null){
+		parent::__construct($idInfo, $name, $breakInfo ?? BlockBreakInfo::instant());
 	}
 
 	protected function writeStateToMeta() : int{
 		return $this->age;
 	}
 
-	public function readStateFromMeta(int $meta) : void{
-		$this->age = $meta;
+	public function readStateFromData(int $id, int $stateMeta) : void{
+		$this->age = BlockDataValidator::readBoundedInt("age", $stateMeta, 0, 15);
 	}
 
 	public function getStateBitmask() : int{
@@ -59,23 +60,15 @@ class Fire extends Flowable{
 		return true;
 	}
 
-	public function getName() : string{
-		return "Fire Block";
-	}
-
 	public function getLightLevel() : int{
 		return 15;
-	}
-
-	public function isBreakable(Item $item) : bool{
-		return false;
 	}
 
 	public function canBeReplaced() : bool{
 		return true;
 	}
 
-	public function onEntityCollide(Entity $entity) : void{
+	public function onEntityInside(Entity $entity) : void{
 		$ev = new EntityDamageByBlockEvent($this, $entity, EntityDamageEvent::CAUSE_FIRE, 1);
 		$entity->attack($ev);
 
@@ -95,9 +88,9 @@ class Fire extends Flowable{
 
 	public function onNearbyBlockChange() : void{
 		if(!$this->getSide(Facing::DOWN)->isSolid() and !$this->hasAdjacentFlammableBlocks()){
-			$this->getLevel()->setBlock($this, BlockFactory::get(Block::AIR));
+			$this->getWorld()->setBlock($this, BlockFactory::get(BlockLegacyIds::AIR));
 		}else{
-			$this->level->scheduleDelayedBlockUpdate($this, mt_rand(30, 40));
+			$this->world->scheduleDelayedBlockUpdate($this, mt_rand(30, 40));
 		}
 	}
 
@@ -120,21 +113,21 @@ class Fire extends Flowable{
 			if($this->age === 15){
 				if(!$down->isFlammable() and mt_rand(0, 3) === 3){ //1/4 chance to extinguish
 					$canSpread = false;
-					$result = BlockFactory::get(Block::AIR);
+					$result = BlockFactory::get(BlockLegacyIds::AIR);
 				}
 			}elseif(!$this->hasAdjacentFlammableBlocks()){
 				$canSpread = false;
 				if(!$down->isSolid() or $this->age > 3){
-					$result = BlockFactory::get(Block::AIR);
+					$result = BlockFactory::get(BlockLegacyIds::AIR);
 				}
 			}
 		}
 
 		if($result !== null){
-			$this->level->setBlock($this, $result);
+			$this->world->setBlock($this, $result);
 		}
 
-		$this->level->scheduleDelayedBlockUpdate($this, mt_rand(30, 40));
+		$this->world->scheduleDelayedBlockUpdate($this, mt_rand(30, 40));
 
 		if($canSpread){
 			//TODO: raise upper bound for chance in humid biomes
@@ -175,9 +168,9 @@ class Fire extends Flowable{
 				if(mt_rand(0, $this->age + 9) < 5){ //TODO: check rain
 					$fire = clone $this;
 					$fire->age = min(15, $fire->age + (mt_rand(0, 4) >> 2));
-					$this->level->setBlock($block, $fire);
+					$this->world->setBlock($block, $fire);
 				}else{
-					$this->level->setBlock($block, BlockFactory::get(Block::AIR));
+					$this->world->setBlock($block, BlockFactory::get(BlockLegacyIds::AIR));
 				}
 			}
 		}

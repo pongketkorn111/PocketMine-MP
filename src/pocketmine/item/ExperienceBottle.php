@@ -23,13 +23,12 @@ declare(strict_types=1);
 
 namespace pocketmine\item;
 
-class ExperienceBottle extends ProjectileItem{
-	public function __construct(){
-		parent::__construct(self::EXPERIENCE_BOTTLE, 0, "Bottle o' Enchanting");
-	}
+use pocketmine\entity\projectile\ExperienceBottle as ExperienceBottleEntity;
 
-	public function getProjectileEntityType() : string{
-		return "ThrownExpBottle";
+class ExperienceBottle extends ProjectileItem{
+
+	public function getProjectileEntityClass() : string{
+		return ExperienceBottleEntity::class;
 	}
 
 	public function getThrowForce() : float{

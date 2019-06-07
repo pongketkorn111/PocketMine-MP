@@ -24,50 +24,53 @@ declare(strict_types=1);
 namespace pocketmine\event\server;
 
 use pocketmine\event\Cancellable;
-use pocketmine\network\mcpe\protocol\DataPacket;
-use pocketmine\Player;
+use pocketmine\event\CancellableTrait;
+use pocketmine\network\mcpe\NetworkSession;
+use pocketmine\network\mcpe\protocol\ClientboundPacket;
 
 /**
  * Called when a list of packets is broadcasted to 1 or more players.
  */
 class DataPacketBroadcastEvent extends ServerEvent implements Cancellable{
-	/** @var Player[] */
-	private $players;
-	/** @var DataPacket[] */
+	use CancellableTrait;
+
+	/** @var NetworkSession[] */
+	private $targets;
+	/** @var ClientboundPacket[] */
 	private $packets;
 
 	/**
-	 * @param Player[]     $players
-	 * @param DataPacket[] $packets
+	 * @param NetworkSession[]    $targets
+	 * @param ClientboundPacket[] $packets
 	 */
-	public function __construct(array $players, array $packets){
-		$this->players = $players;
+	public function __construct(array $targets, array $packets){
+		$this->targets = $targets;
 		$this->packets = $packets;
 	}
 
 	/**
-	 * @return Player[]
+	 * @return NetworkSession[]
 	 */
-	public function getPlayers() : array{
-		return $this->players;
+	public function getTargets() : array{
+		return $this->targets;
 	}
 
 	/**
-	 * @param Player[] $players
+	 * @param NetworkSession[] $targets
 	 */
-	public function setPlayers(array $players) : void{
-		$this->players = $players;
+	public function setTargets(array $targets) : void{
+		$this->targets = $targets;
 	}
 
 	/**
-	 * @return DataPacket[]
+	 * @return ClientboundPacket[]
 	 */
 	public function getPackets() : array{
 		return $this->packets;
 	}
 
 	/**
-	 * @param DataPacket[] $packets
+	 * @param ClientboundPacket[] $packets
 	 */
 	public function setPackets(array $packets) : void{
 		$this->packets = $packets;

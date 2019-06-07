@@ -25,6 +25,9 @@ namespace pocketmine\inventory;
 
 use pocketmine\item\Item;
 use pocketmine\Player;
+use function max;
+use function min;
+use const PHP_INT_MAX;
 
 class CraftingGrid extends BaseInventory{
 	public const SIZE_SMALL = 2;
@@ -47,41 +50,20 @@ class CraftingGrid extends BaseInventory{
 	public function __construct(Player $holder, int $gridWidth){
 		$this->holder = $holder;
 		$this->gridWidth = $gridWidth;
-		parent::__construct();
+		parent::__construct($this->getGridWidth() ** 2);
 	}
 
 	public function getGridWidth() : int{
 		return $this->gridWidth;
 	}
 
-	public function getDefaultSize() : int{
-		return $this->getGridWidth() ** 2;
-	}
-
-	public function setSize(int $size){
+	public function setSize(int $size) : void{
 		throw new \BadMethodCallException("Cannot change the size of a crafting grid");
 	}
 
-	public function getName() : string{
-		return "Crafting";
-	}
-
-	public function setItem(int $index, Item $item, bool $send = true) : bool{
-		if(parent::setItem($index, $item, $send)){
-			$this->seekRecipeBounds();
-
-			return true;
-		}
-
-		return false;
-	}
-
-	public function sendSlot(int $index, $target) : void{
-		//we can't send a slot of a client-sided inventory window
-	}
-
-	public function sendContents($target) : void{
-		//no way to do this
+	public function setItem(int $index, Item $item, bool $send = true) : void{
+		parent::setItem($index, $item, $send);
+		$this->seekRecipeBounds();
 	}
 
 	/**

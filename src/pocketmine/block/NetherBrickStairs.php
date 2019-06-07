@@ -27,25 +27,7 @@ use pocketmine\item\TieredTool;
 
 class NetherBrickStairs extends Stair{
 
-	protected $id = self::NETHER_BRICK_STAIRS;
-
-	public function __construct(){
-
-	}
-
-	public function getName() : string{
-		return "Nether Brick Stairs";
-	}
-
-	public function getHardness() : float{
-		return 2;
-	}
-
-	public function getToolType() : int{
-		return BlockToolType::TYPE_PICKAXE;
-	}
-
-	public function getToolHarvestLevel() : int{
-		return TieredTool::TIER_WOODEN;
+	public function __construct(BlockIdentifier $idInfo, string $name, ?BlockBreakInfo $breakInfo = null){
+		parent::__construct($idInfo, $name, $breakInfo ?? new BlockBreakInfo(2.0, BlockToolType::TYPE_PICKAXE, TieredTool::TIER_WOODEN, 30.0));
 	}
 }

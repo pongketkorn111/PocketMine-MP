@@ -23,57 +23,57 @@ declare(strict_types=1);
 
 namespace pocketmine\block;
 
+use pocketmine\block\utils\BlockDataValidator;
+use pocketmine\block\utils\Fallable;
+use pocketmine\block\utils\FallableTrait;
 use pocketmine\item\Item;
 use pocketmine\item\ItemFactory;
 use pocketmine\item\TieredTool;
+use pocketmine\math\AxisAlignedBB;
 use pocketmine\math\Facing;
 use pocketmine\math\Vector3;
 use pocketmine\Player;
+use function floor;
+use function max;
 
-class SnowLayer extends Flowable{
-
-	protected $id = self::SNOW_LAYER;
+class SnowLayer extends Flowable implements Fallable{
+	use FallableTrait;
 
 	/** @var int */
 	protected $layers = 1;
 
-	public function __construct(){
-
+	public function __construct(BlockIdentifier $idInfo, string $name, ?BlockBreakInfo $breakInfo = null){
+		parent::__construct($idInfo, $name, $breakInfo ?? new BlockBreakInfo(0.1, BlockToolType::TYPE_SHOVEL, TieredTool::TIER_WOODEN));
 	}
 
 	protected function writeStateToMeta() : int{
 		return $this->layers - 1;
 	}
 
-	public function readStateFromMeta(int $meta) : void{
-		$this->layers = $meta + 1;
+	public function readStateFromData(int $id, int $stateMeta) : void{
+		$this->layers = BlockDataValidator::readBoundedInt("layers", $stateMeta + 1, 1, 8);
 	}
 
 	public function getStateBitmask() : int{
 		return 0b111;
 	}
 
-	public function getName() : string{
-		return "Snow Layer";
-	}
-
 	public function canBeReplaced() : bool{
-		return true;
+		return $this->layers < 8;
 	}
 
-	public function getHardness() : float{
-		return 0.1;
+	protected function recalculateBoundingBox() : ?AxisAlignedBB{
+		//TODO: this zero-height BB is intended to stay in lockstep with a MCPE bug
+		return AxisAlignedBB::one()->trim(Facing::UP, $this->layers >= 4 ? 0.5 : 1);
 	}
 
-	public function getToolType() : int{
-		return BlockToolType::TYPE_SHOVEL;
-	}
-
-	public function getToolHarvestLevel() : int{
-		return TieredTool::TIER_WOODEN;
-	}
-
-	public function place(Item $item, Block $blockReplace, Block $blockClicked, int $face, Vector3 $clickVector, Player $player = null) : bool{
+	public function place(Item $item, Block $blockReplace, Block $blockClicked, int $face, Vector3 $clickVector, ?Player $player = null) : bool{
+		if($blockReplace instanceof SnowLayer){
+			if($blockReplace->layers >= 8){
+				return false;
+			}
+			$this->layers = $blockReplace->layers + 1;
+		}
 		if($blockReplace->getSide(Facing::DOWN)->isSolid()){
 			//TODO: fix placement
 			return parent::place($item, $blockReplace, $blockClicked, $face, $clickVector, $player);
@@ -82,25 +82,23 @@ class SnowLayer extends Flowable{
 		return false;
 	}
 
-	public function onNearbyBlockChange() : void{
-		if(!$this->getSide(Facing::DOWN)->isSolid()){
-			$this->getLevel()->setBlock($this, BlockFactory::get(Block::AIR), false);
-		}
-	}
-
 	public function ticksRandomly() : bool{
 		return true;
 	}
 
 	public function onRandomTick() : void{
-		if($this->level->getBlockLightAt($this->x, $this->y, $this->z) >= 12){
-			$this->getLevel()->setBlock($this, BlockFactory::get(Block::AIR), false);
+		if($this->world->getBlockLightAt($this->x, $this->y, $this->z) >= 12){
+			$this->getWorld()->setBlock($this, BlockFactory::get(BlockLegacyIds::AIR), false);
 		}
+	}
+
+	public function tickFalling() : ?Block{
+		return null;
 	}
 
 	public function getDropsForCompatibleTool(Item $item) : array{
 		return [
-			ItemFactory::get(Item::SNOWBALL) //TODO: check layer count
+			ItemFactory::get(Item::SNOWBALL, 0, max(1, (int) floor($this->layers / 2)))
 		];
 	}
 

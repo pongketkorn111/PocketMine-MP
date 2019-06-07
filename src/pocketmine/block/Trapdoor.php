@@ -23,19 +23,15 @@ declare(strict_types=1);
 
 namespace pocketmine\block;
 
+use pocketmine\block\utils\BlockDataValidator;
 use pocketmine\item\Item;
-use pocketmine\level\sound\DoorSound;
 use pocketmine\math\AxisAlignedBB;
-use pocketmine\math\Bearing;
 use pocketmine\math\Facing;
 use pocketmine\math\Vector3;
 use pocketmine\Player;
+use pocketmine\world\sound\DoorSound;
 
-class Trapdoor extends Transparent{
-	private const MASK_UPPER = 0x04;
-	private const MASK_OPENED = 0x08;
-
-	protected $id = self::TRAPDOOR;
+abstract class Trapdoor extends Transparent{
 
 	/** @var int */
 	protected $facing = Facing::NORTH;
@@ -44,61 +40,29 @@ class Trapdoor extends Transparent{
 	/** @var bool */
 	protected $top = false;
 
-	public function __construct(){
-
-	}
-
 	protected function writeStateToMeta() : int{
-		return (5 - $this->facing) | ($this->top ? self::MASK_UPPER : 0) | ($this->open ? self::MASK_OPENED : 0);
+		return (5 - $this->facing) | ($this->top ? BlockLegacyMetadata::TRAPDOOR_FLAG_UPPER : 0) | ($this->open ? BlockLegacyMetadata::TRAPDOOR_FLAG_OPEN : 0);
 	}
 
-	public function readStateFromMeta(int $meta) : void{
+	public function readStateFromData(int $id, int $stateMeta) : void{
 		//TODO: in PC the values are reversed (facing - 2)
 
-		$this->facing = 5 - ($meta & 0x03);
-		$this->top = ($meta & self::MASK_UPPER) !== 0;
-		$this->open = ($meta & self::MASK_OPENED) !== 0;
+		$this->facing = BlockDataValidator::read5MinusHorizontalFacing($stateMeta);
+		$this->top = ($stateMeta & BlockLegacyMetadata::TRAPDOOR_FLAG_UPPER) !== 0;
+		$this->open = ($stateMeta & BlockLegacyMetadata::TRAPDOOR_FLAG_OPEN) !== 0;
 	}
 
 	public function getStateBitmask() : int{
 		return 0b1111;
 	}
 
-	public function getName() : string{
-		return "Wooden Trapdoor";
-	}
-
-	public function getHardness() : float{
-		return 3;
-	}
-
 	protected function recalculateBoundingBox() : ?AxisAlignedBB{
-		$f = 0.1875;
-
-		if($this->top){
-			$bb = new AxisAlignedBB(0, 1 - $f, 0, 1, 1, 1);
-		}else{
-			$bb = new AxisAlignedBB(0, 0, 0, 1, $f, 1);
-		}
-
-		if($this->open){
-			if($this->facing === Facing::NORTH){
-				$bb->setBounds(0, 0, 1 - $f, 1, 1, 1);
-			}elseif($this->facing === Facing::SOUTH){
-				$bb->setBounds(0, 0, 0, 1, 1, $f);
-			}elseif($this->facing === Facing::WEST){
-				$bb->setBounds(1 - $f, 0, 0, 1, 1, 1);
-			}elseif($this->facing === Facing::EAST){
-				$bb->setBounds(0, 0, 0, $f, 1, 1);
-			}
-		}
-
-		return $bb;
+		return AxisAlignedBB::one()->trim($this->open ? $this->facing : ($this->top ? Facing::DOWN : Facing::UP), 13 / 16);
 	}
 
-	public function place(Item $item, Block $blockReplace, Block $blockClicked, int $face, Vector3 $clickVector, Player $player = null) : bool{
+	public function place(Item $item, Block $blockReplace, Block $blockClicked, int $face, Vector3 $clickVector, ?Player $player = null) : bool{
 		if($player !== null){
-			$this->facing = Bearing::toFacing(Bearing::opposite($player->getDirection()));
+			$this->facing = Facing::opposite($player->getHorizontalFacing());
 		}
 		if(($clickVector->y > 0.5 and $face !== Facing::UP) or $face === Facing::DOWN){
 			$this->top = true;
@@ -107,18 +71,10 @@ class Trapdoor extends Transparent{
 		return parent::place($item, $blockReplace, $blockClicked, $face, $clickVector, $player);
 	}
 
-	public function onActivate(Item $item, Player $player = null) : bool{
+	public function onInteract(Item $item, int $face, Vector3 $clickVector, ?Player $player = null) : bool{
 		$this->open = !$this->open;
-		$this->level->setBlock($this, $this);
-		$this->level->addSound(new DoorSound($this));
+		$this->world->setBlock($this, $this);
+		$this->world->addSound($this, new DoorSound());
 		return true;
-	}
-
-	public function getToolType() : int{
-		return BlockToolType::TYPE_AXE;
-	}
-
-	public function getFuelTime() : int{
-		return 300;
 	}
 }

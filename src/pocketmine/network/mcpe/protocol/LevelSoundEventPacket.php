@@ -28,7 +28,7 @@ namespace pocketmine\network\mcpe\protocol;
 use pocketmine\math\Vector3;
 use pocketmine\network\mcpe\handler\SessionHandler;
 
-class LevelSoundEventPacket extends DataPacket{
+class LevelSoundEventPacket extends DataPacket implements ClientboundPacket, ServerboundPacket{
 	public const NETWORK_ID = ProtocolInfo::LEVEL_SOUND_EVENT_PACKET;
 
 	public const SOUND_ITEM_USE_ON = 0;
@@ -218,7 +218,7 @@ class LevelSoundEventPacket extends DataPacket{
 	public const SOUND_ITEM_TRIDENT_THUNDER = 184;
 	public const SOUND_ITEM_TRIDENT_HIT_GROUND = 185;
 	public const SOUND_DEFAULT = 186;
-
+	public const SOUND_BLOCK_FLETCHING_TABLE_USE = 187;
 	public const SOUND_ELEMCONSTRUCT_OPEN = 188;
 	public const SOUND_ICEBOMB_HIT = 189;
 	public const SOUND_BALLOONPOP = 190;
@@ -242,7 +242,78 @@ class LevelSoundEventPacket extends DataPacket{
 	public const SOUND_CONVERT_TO_DROWNED = 211;
 	public const SOUND_BUCKET_FILL_FISH = 212;
 	public const SOUND_BUCKET_EMPTY_FISH = 213;
-	public const SOUND_UNDEFINED = 214;
+	public const SOUND_BUBBLE_UP = 214;
+	public const SOUND_BUBBLE_DOWN = 215;
+	public const SOUND_BUBBLE_POP = 216;
+	public const SOUND_BUBBLE_UPINSIDE = 217;
+	public const SOUND_BUBBLE_DOWNINSIDE = 218;
+	public const SOUND_HURT_BABY = 219;
+	public const SOUND_DEATH_BABY = 220;
+	public const SOUND_STEP_BABY = 221;
+
+	public const SOUND_BORN = 223;
+	public const SOUND_BLOCK_TURTLE_EGG_BREAK = 224;
+	public const SOUND_BLOCK_TURTLE_EGG_CRACK = 225;
+	public const SOUND_BLOCK_TURTLE_EGG_HATCH = 226;
+
+	public const SOUND_BLOCK_TURTLE_EGG_ATTACK = 228;
+	public const SOUND_BEACON_ACTIVATE = 229;
+	public const SOUND_BEACON_AMBIENT = 230;
+	public const SOUND_BEACON_DEACTIVATE = 231;
+	public const SOUND_BEACON_POWER = 232;
+	public const SOUND_CONDUIT_ACTIVATE = 233;
+	public const SOUND_CONDUIT_AMBIENT = 234;
+	public const SOUND_CONDUIT_ATTACK = 235;
+	public const SOUND_CONDUIT_DEACTIVATE = 236;
+	public const SOUND_CONDUIT_SHORT = 237;
+	public const SOUND_SWOOP = 238;
+	public const SOUND_BLOCK_BAMBOO_SAPLING_PLACE = 239;
+	public const SOUND_PRESNEEZE = 240;
+	public const SOUND_SNEEZE = 241;
+	public const SOUND_AMBIENT_TAME = 242;
+	public const SOUND_SCARED = 243;
+	public const SOUND_BLOCK_SCAFFOLDING_CLIMB = 244;
+	public const SOUND_CROSSBOW_LOADING_START = 245;
+	public const SOUND_CROSSBOW_LOADING_MIDDLE = 246;
+	public const SOUND_CROSSBOW_LOADING_END = 247;
+	public const SOUND_CROSSBOW_SHOOT = 248;
+	public const SOUND_CROSSBOW_QUICK_CHARGE_START = 249;
+	public const SOUND_CROSSBOW_QUICK_CHARGE_MIDDLE = 250;
+	public const SOUND_CROSSBOW_QUICK_CHARGE_END = 251;
+	public const SOUND_AMBIENT_AGGRESSIVE = 252;
+	public const SOUND_AMBIENT_WORRIED = 253;
+	public const SOUND_CANT_BREED = 254;
+	public const SOUND_ITEM_SHIELD_BLOCK = 255;
+	public const SOUND_ITEM_BOOK_PUT = 256;
+	public const SOUND_BLOCK_GRINDSTONE_USE = 257;
+	public const SOUND_BLOCK_BELL_HIT = 258;
+	public const SOUND_BLOCK_CAMPFIRE_CRACKLE = 259;
+	public const SOUND_ROAR = 260;
+	public const SOUND_STUN = 261;
+	public const SOUND_BLOCK_SWEET_BERRY_BUSH_HURT = 262;
+	public const SOUND_BLOCK_SWEET_BERRY_BUSH_PICK = 263;
+	public const SOUND_UI_CARTOGRAPHY_TABLE_TAKE_RESULT = 264;
+	public const SOUND_UI_STONECUTTER_TAKE_RESULT = 265;
+	public const SOUND_BLOCK_COMPOSTER_EMPTY = 266;
+	public const SOUND_BLOCK_COMPOSTER_FILL = 267;
+	public const SOUND_BLOCK_COMPOSTER_FILL_SUCCESS = 268;
+	public const SOUND_BLOCK_COMPOSTER_READY = 269;
+	public const SOUND_BLOCK_BARREL_OPEN = 270;
+	public const SOUND_BLOCK_BARREL_CLOSE = 271;
+	public const SOUND_RAID_HORN = 272;
+	public const SOUND_BLOCK_LOOM_USE = 273;
+	public const SOUND_UNDEFINED = 274;
+
+	public static function create(int $sound, ?Vector3 $pos, int $extraData = -1, string $entityType = ":", bool $isBabyMob = false) : self{
+		$result = new self;
+		$result->sound = $sound;
+		$result->extraData = $extraData;
+		$result->position = $pos;
+		$result->disableRelativeVolume = $pos === null;
+		$result->entityType = $entityType;
+		$result->isBabyMob = $isBabyMob;
+		return $result;
+	}
 
 	/** @var int */
 	public $sound;
@@ -250,27 +321,27 @@ class LevelSoundEventPacket extends DataPacket{
 	public $position;
 	/** @var int */
 	public $extraData = -1;
-	/** @var int */
-	public $pitch = 1;
+	/** @var string */
+	public $entityType = ":"; //???
 	/** @var bool */
 	public $isBabyMob = false; //...
 	/** @var bool */
 	public $disableRelativeVolume = false;
 
 	protected function decodePayload() : void{
-		$this->sound = $this->getByte();
+		$this->sound = $this->getUnsignedVarInt();
 		$this->position = $this->getVector3();
 		$this->extraData = $this->getVarInt();
-		$this->pitch = $this->getVarInt();
+		$this->entityType = $this->getString();
 		$this->isBabyMob = $this->getBool();
 		$this->disableRelativeVolume = $this->getBool();
 	}
 
 	protected function encodePayload() : void{
-		$this->putByte($this->sound);
+		$this->putUnsignedVarInt($this->sound);
 		$this->putVector3($this->position);
 		$this->putVarInt($this->extraData);
-		$this->putVarInt($this->pitch);
+		$this->putString($this->entityType);
 		$this->putBool($this->isBabyMob);
 		$this->putBool($this->disableRelativeVolume);
 	}

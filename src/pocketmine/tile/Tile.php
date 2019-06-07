@@ -29,17 +29,13 @@ namespace pocketmine\tile;
 
 use pocketmine\block\Block;
 use pocketmine\item\Item;
-use pocketmine\level\Level;
-use pocketmine\level\Position;
 use pocketmine\math\Vector3;
 use pocketmine\nbt\tag\CompoundTag;
-use pocketmine\nbt\tag\IntTag;
-use pocketmine\nbt\tag\StringTag;
-use pocketmine\Player;
-use pocketmine\Server;
 use pocketmine\timings\Timings;
 use pocketmine\timings\TimingsHandler;
-use pocketmine\utils\Utils;
+use pocketmine\world\Position;
+use pocketmine\world\World;
+use function get_class;
 
 abstract class Tile extends Position{
 
@@ -48,114 +44,25 @@ abstract class Tile extends Position{
 	public const TAG_Y = "y";
 	public const TAG_Z = "z";
 
-	public const BANNER = "Banner";
-	public const BED = "Bed";
-	public const BREWING_STAND = "BrewingStand";
-	public const CHEST = "Chest";
-	public const ENCHANT_TABLE = "EnchantTable";
-	public const ENDER_CHEST = "EnderChest";
-	public const FLOWER_POT = "FlowerPot";
-	public const FURNACE = "Furnace";
-	public const ITEM_FRAME = "ItemFrame";
-	public const MOB_SPAWNER = "MobSpawner";
-	public const SIGN = "Sign";
-	public const SKULL = "Skull";
-
-	/** @var string[] classes that extend Tile */
-	private static $knownTiles = [];
-	/** @var string[][] */
-	private static $saveNames = [];
-
 	/** @var string */
-	public $name;
+	public $name = "";
 	/** @var bool */
 	public $closed = false;
-	/** @var Server */
-	protected $server;
 	/** @var TimingsHandler */
 	protected $timings;
 
-	public static function init(){
-		self::registerTile(Banner::class, [self::BANNER, "minecraft:banner"]);
-		self::registerTile(Bed::class, [self::BED, "minecraft:bed"]);
-		self::registerTile(Chest::class, [self::CHEST, "minecraft:chest"]);
-		self::registerTile(EnchantTable::class, [self::ENCHANT_TABLE, "minecraft:enchanting_table"]);
-		self::registerTile(EnderChest::class, [self::ENDER_CHEST, "minecraft:ender_chest"]);
-		self::registerTile(FlowerPot::class, [self::FLOWER_POT, "minecraft:flower_pot"]);
-		self::registerTile(Furnace::class, [self::FURNACE, "minecraft:furnace"]);
-		self::registerTile(ItemFrame::class, [self::ITEM_FRAME]); //this is an entity in PC
-		self::registerTile(Sign::class, [self::SIGN, "minecraft:sign"]);
-		self::registerTile(Skull::class, [self::SKULL, "minecraft:skull"]);
-	}
-
-	/**
-	 * @param string      $type
-	 * @param Level       $level
-	 * @param CompoundTag $nbt
-	 * @param             $args
-	 *
-	 * @return Tile|null
-	 */
-	public static function createTile($type, Level $level, CompoundTag $nbt, ...$args) : ?Tile{
-		if(isset(self::$knownTiles[$type])){
-			$class = self::$knownTiles[$type];
-			/** @see Tile::__construct() */
-			return new $class($level, $nbt, ...$args);
-		}
-
-		return null;
-	}
-
-	/**
-	 * @param string   $className
-	 * @param string[] $saveNames
-	 */
-	public static function registerTile(string $className, array $saveNames = []) : void{
-		Utils::testValidInstance($className, Tile::class);
-
-		$shortName = (new \ReflectionClass($className))->getShortName();
-		if(!in_array($shortName, $saveNames, true)){
-			$saveNames[] = $shortName;
-		}
-
-		foreach($saveNames as $name){
-			self::$knownTiles[$name] = $className;
-		}
-
-		self::$saveNames[$className] = $saveNames;
-	}
-
-	/**
-	 * Returns the short save name
-	 * @return string
-	 */
-	public static function getSaveId() : string{
-		if(!isset(self::$saveNames[static::class])){
-			throw new \InvalidStateException("Tile is not registered");
-		}
-
-		reset(self::$saveNames[static::class]);
-		return current(self::$saveNames[static::class]);
-	}
-
-	public function __construct(Level $level, CompoundTag $nbt){
+	public function __construct(World $world, Vector3 $pos){
 		$this->timings = Timings::getTileEntityTimings($this);
-
-		$this->server = $level->getServer();
-		$this->name = "";
-
-		parent::__construct($nbt->getInt(self::TAG_X), $nbt->getInt(self::TAG_Y), $nbt->getInt(self::TAG_Z), $level);
-		$this->readSaveData($nbt);
-
-		$this->getLevel()->addTile($this);
+		parent::__construct($pos->getFloorX(), $pos->getFloorY(), $pos->getFloorZ(), $world);
 	}
 
 	/**
+	 * @internal
 	 * Reads additional data from the CompoundTag on tile creation.
 	 *
 	 * @param CompoundTag $nbt
 	 */
-	abstract protected function readSaveData(CompoundTag $nbt) : void;
+	abstract public function readSaveData(CompoundTag $nbt) : void;
 
 	/**
 	 * Writes additional save data to a CompoundTag, not including generic things like ID and coordinates.
@@ -165,11 +72,11 @@ abstract class Tile extends Position{
 	abstract protected function writeSaveData(CompoundTag $nbt) : void;
 
 	public function saveNBT() : CompoundTag{
-		$nbt = new CompoundTag();
-		$nbt->setString(self::TAG_ID, static::getSaveId());
-		$nbt->setInt(self::TAG_X, $this->x);
-		$nbt->setInt(self::TAG_Y, $this->y);
-		$nbt->setInt(self::TAG_Z, $this->z);
+		$nbt = CompoundTag::create()
+			->setString(self::TAG_ID, TileFactory::getSaveId(get_class($this)))
+			->setInt(self::TAG_X, $this->x)
+			->setInt(self::TAG_Y, $this->y)
+			->setInt(self::TAG_Z, $this->z);
 		$this->writeSaveData($nbt);
 
 		return $nbt;
@@ -181,58 +88,23 @@ abstract class Tile extends Position{
 	}
 
 	/**
-	 * Creates and returns a CompoundTag containing the necessary information to spawn a tile of this type.
+	 * @internal
 	 *
-	 * @param Vector3     $pos
-	 * @param int|null    $face
-	 * @param Item|null   $item
-	 * @param Player|null $player
+	 * @param Item $item
 	 *
-	 * @return CompoundTag
+	 * @throws \RuntimeException
 	 */
-	public static function createNBT(Vector3 $pos, ?int $face = null, ?Item $item = null, ?Player $player = null) : CompoundTag{
-		if(static::class === self::class){
-			throw new \BadMethodCallException(__METHOD__ . " must be called from the scope of a child class");
+	public function copyDataFromItem(Item $item) : void{
+		if($item->hasCustomBlockData()){ //TODO: check item root tag (MCPE doesn't use BlockEntityTag)
+			$this->readSaveData($item->getCustomBlockData());
 		}
-		$nbt = new CompoundTag("", [
-			new StringTag(self::TAG_ID, static::getSaveId()),
-			new IntTag(self::TAG_X, (int) $pos->x),
-			new IntTag(self::TAG_Y, (int) $pos->y),
-			new IntTag(self::TAG_Z, (int) $pos->z)
-		]);
-
-		static::createAdditionalNBT($nbt, $pos, $face, $item, $player);
-
-		if($item !== null){
-			$customBlockData = $item->getCustomBlockData();
-			if($customBlockData !== null){
-				foreach($customBlockData as $customBlockDataTag){
-					$nbt->setTag(clone $customBlockDataTag);
-				}
-			}
-		}
-
-		return $nbt;
-	}
-
-	/**
-	 * Called by createNBT() to allow descendent classes to add their own base NBT using the parameters provided.
-	 *
-	 * @param CompoundTag $nbt
-	 * @param Vector3     $pos
-	 * @param int|null    $face
-	 * @param Item|null   $item
-	 * @param Player|null $player
-	 */
-	protected static function createAdditionalNBT(CompoundTag $nbt, Vector3 $pos, ?int $face = null, ?Item $item = null, ?Player $player = null) : void{
-
 	}
 
 	/**
 	 * @return Block
 	 */
 	public function getBlock() : Block{
-		return $this->level->getBlockAt($this->x, $this->y, $this->z);
+		return $this->world->getBlockAt($this->x, $this->y, $this->z);
 	}
 
 	/**
@@ -246,7 +118,7 @@ abstract class Tile extends Position{
 		if($this->closed){
 			throw new \InvalidStateException("Cannot schedule update on garbage tile " . get_class($this));
 		}
-		$this->level->updateTiles[Level::blockHash($this->x, $this->y, $this->z)] = $this;
+		$this->world->updateTiles[World::blockHash($this->x, $this->y, $this->z)] = $this;
 	}
 
 	public function isClosed() : bool{
@@ -257,13 +129,28 @@ abstract class Tile extends Position{
 		$this->close();
 	}
 
+	/**
+	 * Called when the tile's block is destroyed.
+	 */
+	final public function onBlockDestroyed() : void{
+		$this->onBlockDestroyedHook();
+		$this->close();
+	}
+
+	/**
+	 * Override this method to do actions you need to do when this tile is destroyed due to block being broken.
+	 */
+	protected function onBlockDestroyedHook() : void{
+
+	}
+
 	public function close() : void{
 		if(!$this->closed){
 			$this->closed = true;
 
 			if($this->isValid()){
-				$this->level->removeTile($this);
-				$this->setLevel(null);
+				$this->world->removeTile($this);
+				$this->setWorld(null);
 			}
 		}
 	}

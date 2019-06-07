@@ -24,10 +24,13 @@ declare(strict_types=1);
 namespace pocketmine\event\player;
 
 use pocketmine\event\Cancellable;
-use pocketmine\level\Location;
+use pocketmine\event\CancellableTrait;
+use pocketmine\world\Location;
 use pocketmine\Player;
 
 class PlayerMoveEvent extends PlayerEvent implements Cancellable{
+	use CancellableTrait;
+
 	/** @var Location */
 	private $from;
 	/** @var Location */

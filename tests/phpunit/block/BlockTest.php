@@ -24,6 +24,8 @@ declare(strict_types=1);
 namespace pocketmine\block;
 
 use PHPUnit\Framework\TestCase;
+use function file_get_contents;
+use function json_decode;
 
 class BlockTest extends TestCase{
 
@@ -35,17 +37,17 @@ class BlockTest extends TestCase{
 	 * Test registering a block which would overwrite another block, without forcing it
 	 */
 	public function testAccidentalOverrideBlock() : void{
-		$block = new MyCustomBlock();
+		$block = new MyCustomBlock(new BlockIdentifier(BlockLegacyIds::COBBLESTONE), "Cobblestone");
 		$this->expectException(\InvalidArgumentException::class);
-		BlockFactory::registerBlock($block);
+		BlockFactory::register($block);
 	}
 
 	/**
 	 * Test registering a block deliberately overwriting another block works as expected
 	 */
 	public function testDeliberateOverrideBlock() : void{
-		$block = new MyCustomBlock();
-		BlockFactory::registerBlock($block, true);
+		$block = new MyCustomBlock(new BlockIdentifier(BlockLegacyIds::COBBLESTONE), "Cobblestone");
+		BlockFactory::register($block, true);
 		self::assertInstanceOf(MyCustomBlock::class, BlockFactory::get($block->getId()));
 	}
 
@@ -55,8 +57,8 @@ class BlockTest extends TestCase{
 	public function testRegisterNewBlock() : void{
 		for($i = 0; $i < 256; ++$i){
 			if(!BlockFactory::isRegistered($i)){
-				$b = new StrangeNewBlock($i);
-				BlockFactory::registerBlock($b);
+				$b = new StrangeNewBlock(new BlockIdentifier($i), "Strange New Block", BlockBreakInfo::instant());
+				BlockFactory::register($b);
 				self::assertInstanceOf(StrangeNewBlock::class, BlockFactory::get($b->getId()));
 				return;
 			}
@@ -70,7 +72,7 @@ class BlockTest extends TestCase{
 	 */
 	public function testRegisterIdTooLarge() : void{
 		self::expectException(\RuntimeException::class);
-		BlockFactory::registerBlock(new OutOfBoundsBlock(25555));
+		BlockFactory::register(new OutOfBoundsBlock(new BlockIdentifier(25555), "Out Of Bounds Block", BlockBreakInfo::instant()));
 	}
 
 	/**
@@ -78,7 +80,7 @@ class BlockTest extends TestCase{
 	 */
 	public function testRegisterIdTooSmall() : void{
 		self::expectException(\RuntimeException::class);
-		BlockFactory::registerBlock(new OutOfBoundsBlock(-1));
+		BlockFactory::register(new OutOfBoundsBlock(new BlockIdentifier(-1), "Out Of Bounds Block", BlockBreakInfo::instant()));
 	}
 
 	/**
@@ -99,12 +101,12 @@ class BlockTest extends TestCase{
 	 */
 	public function blockGetProvider() : array{
 		return [
-			[Block::STONE, 5],
-			[Block::STONE, 15],
-			[Block::GOLD_BLOCK, 0],
-			[Block::WOODEN_PLANKS, 5],
-			[Block::SAND, 0],
-			[Block::GOLD_BLOCK, 0]
+			[BlockLegacyIds::STONE, 5],
+			[BlockLegacyIds::STONE, 15],
+			[BlockLegacyIds::GOLD_BLOCK, 0],
+			[BlockLegacyIds::WOODEN_PLANKS, 5],
+			[BlockLegacyIds::SAND, 0],
+			[BlockLegacyIds::GOLD_BLOCK, 0]
 		];
 	}
 
@@ -117,23 +119,13 @@ class BlockTest extends TestCase{
 		$block = BlockFactory::get($id, $meta);
 
 		self::assertEquals($id, $block->getId());
-		self::assertEquals($meta, $block->getDamage());
+		self::assertEquals($meta, $block->getMeta());
 	}
 
 	public function testBlockIds() : void{
 		for($i = 0; $i < 256; ++$i){
 			$b = BlockFactory::get($i);
-			self::assertEquals($i, $b->getId());
-		}
-	}
-
-	/**
-	 * Test that all blocks have correctly set names
-	 */
-	public function testBlockNames() : void{
-		for($id = 0; $id < 256; ++$id){
-			$b = BlockFactory::get($id);
-			self::assertTrue($b instanceof UnknownBlock or $b->getName() !== "Unknown", "Block with ID $id does not have a valid name");
+			self::assertContains($i, $b->getIdInfo()->getAllBlockIds());
 		}
 	}
 
@@ -146,6 +138,19 @@ class BlockTest extends TestCase{
 			self::assertNotNull($value, "Light filter value missing for $id");
 			self::assertLessThanOrEqual(15, $value, "Light filter value for $id is larger than the expected 15");
 			self::assertGreaterThan(0, $value, "Light filter value for $id must be larger than 0");
+		}
+	}
+
+	public function testConsistency() : void{
+		$list = json_decode(file_get_contents(__DIR__ . '/block_factory_consistency_check.json'), true);
+		$states = BlockFactory::getAllKnownStates();
+		foreach($states as $k => $state){
+			self::assertArrayHasKey($k, $list, "New block state $k (" . $state->getName() . ") - consistency check may need regenerating");
+			self::assertSame($list[$k], $state->getName());
+		}
+		foreach($list as $k => $name){
+			self::assertArrayHasKey($k, $states, "Missing previously-known block state $k ($name)");
+			self::assertSame($name, $states[$k]->getName());
 		}
 	}
 }

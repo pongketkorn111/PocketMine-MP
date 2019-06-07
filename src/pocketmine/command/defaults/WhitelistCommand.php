@@ -27,7 +27,11 @@ use pocketmine\command\Command;
 use pocketmine\command\CommandSender;
 use pocketmine\command\utils\InvalidCommandSyntaxException;
 use pocketmine\lang\TranslationContainer;
+use pocketmine\Player;
 use pocketmine\utils\TextFormat;
+use function count;
+use function implode;
+use function strtolower;
 
 class WhitelistCommand extends VanillaCommand{
 
@@ -55,7 +59,7 @@ class WhitelistCommand extends VanillaCommand{
 			}
 			switch(strtolower($args[0])){
 				case "reload":
-					$sender->getServer()->reloadWhitelist();
+					$sender->getServer()->getWhitelisted()->reload();
 					Command::broadcastCommandMessage($sender, new TranslationContainer("commands.whitelist.reloaded"));
 
 					return true;
@@ -91,6 +95,9 @@ class WhitelistCommand extends VanillaCommand{
 			if($this->badPerm($sender, strtolower($args[0]))){
 				return false;
 			}
+			if(!Player::isValidUserName($args[1])){
+				throw new InvalidCommandSyntaxException();
+			}
 			switch(strtolower($args[0])){
 				case "add":
 					$sender->getServer()->getOfflinePlayer($args[1])->setWhitelisted(true);
@@ -108,9 +115,13 @@ class WhitelistCommand extends VanillaCommand{
 		return true;
 	}
 
-	private function badPerm(CommandSender $sender, string $perm) : bool{
-		if(!$sender->hasPermission("pocketmine.command.whitelist.$perm")){
-			$sender->sendMessage(new TranslationContainer(TextFormat::RED . "%commands.generic.permission"));
+	private function badPerm(CommandSender $sender, string $subcommand) : bool{
+		static $map = [
+			"on" => "enable",
+			"off" => "disable"
+		];
+		if(!$sender->hasPermission("pocketmine.command.whitelist." . ($map[$subcommand] ?? $subcommand))){
+			$sender->sendMessage($sender->getServer()->getLanguage()->translateString(TextFormat::RED . "%commands.generic.permission"));
 
 			return true;
 		}

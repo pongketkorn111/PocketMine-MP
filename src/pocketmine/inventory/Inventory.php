@@ -48,16 +48,6 @@ interface Inventory{
 	public function setMaxStackSize(int $size) : void;
 
 	/**
-	 * @return string
-	 */
-	public function getName() : string;
-
-	/**
-	 * @return string
-	 */
-	public function getTitle() : string;
-
-	/**
 	 * @param int $index
 	 *
 	 * @return Item
@@ -66,15 +56,12 @@ interface Inventory{
 
 	/**
 	 * Puts an Item in a slot.
-	 * If a plugin refuses the update or $index is invalid, it'll return false
 	 *
 	 * @param int  $index
 	 * @param Item $item
 	 * @param bool $send
-	 *
-	 * @return bool
 	 */
-	public function setItem(int $index, Item $item, bool $send = true) : bool;
+	public function setItem(int $index, Item $item, bool $send = true) : void;
 
 	/**
 	 * Stores the given Items in the inventory. This will try to fill
@@ -192,10 +179,8 @@ interface Inventory{
 	 *
 	 * @param int  $index
 	 * @param bool $send
-	 *
-	 * @return bool
 	 */
-	public function clear(int $index, bool $send = true) : bool;
+	public function clear(int $index, bool $send = true) : void;
 
 	/**
 	 * Clears all the slots
@@ -205,17 +190,20 @@ interface Inventory{
 	public function clearAll(bool $send = true) : void;
 
 	/**
+	 * Swaps the specified slots.
+	 *
+	 * @param int $slot1
+	 * @param int $slot2
+	 */
+	public function swap(int $slot1, int $slot2) : void;
+
+	/**
 	 * Gets all the Players viewing the inventory
 	 * Players will view their inventory at all times, even when not open.
 	 *
 	 * @return Player[]
 	 */
 	public function getViewers() : array;
-
-	/**
-	 * @param Player $who
-	 */
-	public function onOpen(Player $who) : void;
 
 	/**
 	 * Tries to open the inventory to a player
@@ -229,18 +217,6 @@ interface Inventory{
 	public function close(Player $who) : void;
 
 	/**
-	 * @param Player $who
-	 */
-	public function onClose(Player $who) : void;
-
-	/**
-	 * @param int  $index
-	 * @param Item $before
-	 * @param bool $send
-	 */
-	public function onSlotChange(int $index, Item $before, bool $send) : void;
-
-	/**
 	 * Returns whether the specified slot exists in the inventory.
 	 *
 	 * @param int $slot
@@ -250,12 +226,17 @@ interface Inventory{
 	public function slotExists(int $slot) : bool;
 
 	/**
-	 * @return null|InventoryEventProcessor
+	 * @param InventoryChangeListener ...$listeners
 	 */
-	public function getEventProcessor() : ?InventoryEventProcessor;
+	public function addChangeListeners(InventoryChangeListener ...$listeners) : void;
 
 	/**
-	 * @param null|InventoryEventProcessor $eventProcessor
+	 * @param InventoryChangeListener ...$listeners
 	 */
-	public function setEventProcessor(?InventoryEventProcessor $eventProcessor) : void;
+	public function removeChangeListeners(InventoryChangeListener ...$listeners) : void;
+
+	/**
+	 * @return InventoryChangeListener[]
+	 */
+	public function getChangeListeners() : array;
 }

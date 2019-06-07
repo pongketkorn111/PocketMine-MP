@@ -27,25 +27,7 @@ use pocketmine\item\TieredTool;
 
 class GoldOre extends Solid{
 
-	protected $id = self::GOLD_ORE;
-
-	public function __construct(){
-
-	}
-
-	public function getName() : string{
-		return "Gold Ore";
-	}
-
-	public function getHardness() : float{
-		return 3;
-	}
-
-	public function getToolType() : int{
-		return BlockToolType::TYPE_PICKAXE;
-	}
-
-	public function getToolHarvestLevel() : int{
-		return TieredTool::TIER_IRON;
+	public function __construct(BlockIdentifier $idInfo, string $name, ?BlockBreakInfo $breakInfo = null){
+		parent::__construct($idInfo, $name, $breakInfo ?? new BlockBreakInfo(3.0, BlockToolType::TYPE_PICKAXE, TieredTool::TIER_IRON));
 	}
 }

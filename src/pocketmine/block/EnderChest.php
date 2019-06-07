@@ -23,60 +23,56 @@ declare(strict_types=1);
 
 namespace pocketmine\block;
 
+use pocketmine\block\utils\BlockDataValidator;
 use pocketmine\item\Item;
 use pocketmine\item\ItemFactory;
 use pocketmine\item\TieredTool;
-use pocketmine\math\Bearing;
+use pocketmine\math\AxisAlignedBB;
 use pocketmine\math\Facing;
 use pocketmine\math\Vector3;
 use pocketmine\Player;
 use pocketmine\tile\EnderChest as TileEnderChest;
-use pocketmine\tile\Tile;
 
-class EnderChest extends Chest{
+class EnderChest extends Transparent{
 
-	protected $id = self::ENDER_CHEST;
+	/** @var int */
+	protected $facing = Facing::NORTH;
 
-	public function getHardness() : float{
-		return 22.5;
+	public function __construct(BlockIdentifier $idInfo, string $name, ?BlockBreakInfo $breakInfo = null){
+		parent::__construct($idInfo, $name, $breakInfo ?? new BlockBreakInfo(22.5, BlockToolType::TYPE_PICKAXE, TieredTool::TIER_WOODEN, 3000.0));
 	}
 
-	public function getBlastResistance() : float{
-		return 3000;
+	protected function writeStateToMeta() : int{
+		return $this->facing;
+	}
+
+	public function readStateFromData(int $id, int $stateMeta) : void{
+		$this->facing = BlockDataValidator::readHorizontalFacing($stateMeta);
+	}
+
+	public function getStateBitmask() : int{
+		return 0b111;
 	}
 
 	public function getLightLevel() : int{
 		return 7;
 	}
 
-	public function getName() : string{
-		return "Ender Chest";
+	protected function recalculateBoundingBox() : ?AxisAlignedBB{
+		//these are slightly bigger than in PC
+		return AxisAlignedBB::one()->contract(0.025, 0, 0.025)->trim(Facing::UP, 0.05);
 	}
 
-	public function getToolType() : int{
-		return BlockToolType::TYPE_PICKAXE;
-	}
-
-	public function getToolHarvestLevel() : int{
-		return TieredTool::TIER_WOODEN;
-	}
-
-	public function place(Item $item, Block $blockReplace, Block $blockClicked, int $face, Vector3 $clickVector, Player $player = null) : bool{
-		if($player !== null){ //same as normal chest - TODO: clean up inheritance here
-			$this->facing = Bearing::toFacing(Bearing::opposite($player->getDirection()));
+	public function place(Item $item, Block $blockReplace, Block $blockClicked, int $face, Vector3 $clickVector, ?Player $player = null) : bool{
+		if($player !== null){
+			$this->facing = Facing::opposite($player->getHorizontalFacing());
 		}
-
-		if(Block::place($item, $blockReplace, $blockClicked, $face, $clickVector, $player)){
-			Tile::createTile(Tile::ENDER_CHEST, $this->getLevel(), TileEnderChest::createNBT($this, $face, $item, $player));
-			return true;
-		}
-
-		return false;
+		return parent::place($item, $blockReplace, $blockClicked, $face, $clickVector, $player);
 	}
 
-	public function onActivate(Item $item, Player $player = null) : bool{
+	public function onInteract(Item $item, int $face, Vector3 $clickVector, ?Player $player = null) : bool{
 		if($player instanceof Player){
-			$enderChest = $this->getLevel()->getTile($this);
+			$enderChest = $this->getWorld()->getTile($this);
 			if($enderChest instanceof TileEnderChest and $this->getSide(Facing::UP)->isTransparent()){
 				$player->getEnderChestInventory()->setHolderPosition($enderChest);
 				$player->addWindow($player->getEnderChestInventory());
@@ -90,9 +86,5 @@ class EnderChest extends Chest{
 		return [
 			ItemFactory::get(Item::OBSIDIAN, 0, 8)
 		];
-	}
-
-	public function getFuelTime() : int{
-		return 0;
 	}
 }

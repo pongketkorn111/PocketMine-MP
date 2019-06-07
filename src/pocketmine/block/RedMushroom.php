@@ -30,14 +30,8 @@ use pocketmine\Player;
 
 class RedMushroom extends Flowable{
 
-	protected $id = self::RED_MUSHROOM;
-
-	public function __construct(){
-
-	}
-
-	public function getName() : string{
-		return "Red Mushroom";
+	public function __construct(BlockIdentifier $idInfo, string $name, ?BlockBreakInfo $breakInfo = null){
+		parent::__construct($idInfo, $name, $breakInfo ?? BlockBreakInfo::instant());
 	}
 
 	public function ticksRandomly() : bool{
@@ -46,11 +40,11 @@ class RedMushroom extends Flowable{
 
 	public function onNearbyBlockChange() : void{
 		if($this->getSide(Facing::DOWN)->isTransparent()){
-			$this->getLevel()->useBreakOn($this);
+			$this->getWorld()->useBreakOn($this);
 		}
 	}
 
-	public function place(Item $item, Block $blockReplace, Block $blockClicked, int $face, Vector3 $clickVector, Player $player = null) : bool{
+	public function place(Item $item, Block $blockReplace, Block $blockClicked, int $face, Vector3 $clickVector, ?Player $player = null) : bool{
 		$down = $this->getSide(Facing::DOWN);
 		if(!$down->isTransparent()){
 			return parent::place($item, $blockReplace, $blockClicked, $face, $clickVector, $player);

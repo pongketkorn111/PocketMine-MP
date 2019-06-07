@@ -27,9 +27,10 @@ use pocketmine\command\Command;
 use pocketmine\command\CommandSender;
 use pocketmine\command\utils\InvalidCommandSyntaxException;
 use pocketmine\lang\TranslationContainer;
-use pocketmine\level\Level;
 use pocketmine\Player;
 use pocketmine\utils\TextFormat;
+use pocketmine\world\World;
+use function count;
 
 class TimeCommand extends VanillaCommand{
 
@@ -49,38 +50,38 @@ class TimeCommand extends VanillaCommand{
 
 		if($args[0] === "start"){
 			if(!$sender->hasPermission("pocketmine.command.time.start")){
-				$sender->sendMessage(new TranslationContainer(TextFormat::RED . "%commands.generic.permission"));
+				$sender->sendMessage($sender->getServer()->getLanguage()->translateString(TextFormat::RED . "%commands.generic.permission"));
 
 				return true;
 			}
-			foreach($sender->getServer()->getLevels() as $level){
-				$level->startTime();
+			foreach($sender->getServer()->getWorldManager()->getWorlds() as $world){
+				$world->startTime();
 			}
 			Command::broadcastCommandMessage($sender, "Restarted the time");
 			return true;
 		}elseif($args[0] === "stop"){
 			if(!$sender->hasPermission("pocketmine.command.time.stop")){
-				$sender->sendMessage(new TranslationContainer(TextFormat::RED . "%commands.generic.permission"));
+				$sender->sendMessage($sender->getServer()->getLanguage()->translateString(TextFormat::RED . "%commands.generic.permission"));
 
 				return true;
 			}
-			foreach($sender->getServer()->getLevels() as $level){
-				$level->stopTime();
+			foreach($sender->getServer()->getWorldManager()->getWorlds() as $world){
+				$world->stopTime();
 			}
 			Command::broadcastCommandMessage($sender, "Stopped the time");
 			return true;
 		}elseif($args[0] === "query"){
 			if(!$sender->hasPermission("pocketmine.command.time.query")){
-				$sender->sendMessage(new TranslationContainer(TextFormat::RED . "%commands.generic.permission"));
+				$sender->sendMessage($sender->getServer()->getLanguage()->translateString(TextFormat::RED . "%commands.generic.permission"));
 
 				return true;
 			}
 			if($sender instanceof Player){
-				$level = $sender->getLevel();
+				$world = $sender->getWorld();
 			}else{
-				$level = $sender->getServer()->getDefaultLevel();
+				$world = $sender->getServer()->getWorldManager()->getDefaultWorld();
 			}
-			$sender->sendMessage(new TranslationContainer("commands.time.query", [$level->getTime()]));
+			$sender->sendMessage($sender->getServer()->getLanguage()->translateString("commands.time.query", [$world->getTime()]));
 			return true;
 		}
 
@@ -91,33 +92,33 @@ class TimeCommand extends VanillaCommand{
 
 		if($args[0] === "set"){
 			if(!$sender->hasPermission("pocketmine.command.time.set")){
-				$sender->sendMessage(new TranslationContainer(TextFormat::RED . "%commands.generic.permission"));
+				$sender->sendMessage($sender->getServer()->getLanguage()->translateString(TextFormat::RED . "%commands.generic.permission"));
 
 				return true;
 			}
 
 			if($args[1] === "day"){
-				$value = Level::TIME_DAY;
+				$value = World::TIME_DAY;
 			}elseif($args[1] === "night"){
-				$value = Level::TIME_NIGHT;
+				$value = World::TIME_NIGHT;
 			}else{
 				$value = $this->getInteger($sender, $args[1], 0);
 			}
 
-			foreach($sender->getServer()->getLevels() as $level){
-				$level->setTime($value);
+			foreach($sender->getServer()->getWorldManager()->getWorlds() as $world){
+				$world->setTime($value);
 			}
 			Command::broadcastCommandMessage($sender, new TranslationContainer("commands.time.set", [$value]));
 		}elseif($args[0] === "add"){
 			if(!$sender->hasPermission("pocketmine.command.time.add")){
-				$sender->sendMessage(new TranslationContainer(TextFormat::RED . "%commands.generic.permission"));
+				$sender->sendMessage($sender->getServer()->getLanguage()->translateString(TextFormat::RED . "%commands.generic.permission"));
 
 				return true;
 			}
 
 			$value = $this->getInteger($sender, $args[1], 0);
-			foreach($sender->getServer()->getLevels() as $level){
-				$level->setTime($level->getTime() + $value);
+			foreach($sender->getServer()->getWorldManager()->getWorlds() as $world){
+				$world->setTime($world->getTime() + $value);
 			}
 			Command::broadcastCommandMessage($sender, new TranslationContainer("commands.time.added", [$value]));
 		}else{

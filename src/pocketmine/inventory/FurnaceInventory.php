@@ -32,19 +32,11 @@ class FurnaceInventory extends ContainerInventory{
 	protected $holder;
 
 	public function __construct(Furnace $tile){
-		parent::__construct($tile);
+		parent::__construct($tile, 3);
 	}
 
 	public function getNetworkType() : int{
 		return WindowTypes::FURNACE;
-	}
-
-	public function getName() : string{
-		return "Furnace";
-	}
-
-	public function getDefaultSize() : int{
-		return 3; //1 input, 1 fuel, 1 output
 	}
 
 	/**
@@ -78,28 +70,22 @@ class FurnaceInventory extends ContainerInventory{
 
 	/**
 	 * @param Item $item
-	 *
-	 * @return bool
 	 */
-	public function setResult(Item $item) : bool{
-		return $this->setItem(2, $item);
+	public function setResult(Item $item) : void{
+		$this->setItem(2, $item);
 	}
 
 	/**
 	 * @param Item $item
-	 *
-	 * @return bool
 	 */
-	public function setFuel(Item $item) : bool{
-		return $this->setItem(1, $item);
+	public function setFuel(Item $item) : void{
+		$this->setItem(1, $item);
 	}
 
 	/**
 	 * @param Item $item
-	 *
-	 * @return bool
 	 */
-	public function setSmelting(Item $item) : bool{
-		return $this->setItem(0, $item);
+	public function setSmelting(Item $item) : void{
+		$this->setItem(0, $item);
 	}
 }

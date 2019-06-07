@@ -23,6 +23,37 @@ declare(strict_types=1);
 
 namespace pocketmine\utils;
 
+use function array_change_key_case;
+use function array_keys;
+use function array_pop;
+use function array_shift;
+use function basename;
+use function count;
+use function date;
+use function explode;
+use function file_exists;
+use function file_get_contents;
+use function file_put_contents;
+use function implode;
+use function is_array;
+use function is_bool;
+use function json_decode;
+use function json_encode;
+use function preg_match_all;
+use function preg_replace;
+use function serialize;
+use function str_replace;
+use function strlen;
+use function strtolower;
+use function substr;
+use function trim;
+use function unserialize;
+use function yaml_emit;
+use function yaml_parse;
+use const CASE_LOWER;
+use const JSON_BIGINT_AS_STRING;
+use const JSON_PRETTY_PRINT;
+
 /**
  * Config Class for simple config manipulation of multiple formats.
  */
@@ -82,7 +113,7 @@ class Config{
 	/**
 	 * Removes all the changes in memory and loads the file again
 	 */
-	public function reload(){
+	public function reload() : void{
 		$this->config = [];
 		$this->nestedCache = [];
 		$this->load($this->file, $this->type);
@@ -113,7 +144,7 @@ class Config{
 	 * @throws \InvalidArgumentException if config type could not be auto-detected
 	 * @throws \InvalidStateException if config type is invalid
 	 */
-	public function load(string $file, int $type = Config::DETECT, array $default = []) : void{
+	private function load(string $file, int $type = Config::DETECT, array $default = []) : void{
 		$this->file = $file;
 
 		$this->type = $type;
@@ -159,6 +190,15 @@ class Config{
 				$this->save();
 			}
 		}
+	}
+
+	/**
+	 * Returns the path of the config.
+	 *
+	 * @return string
+	 */
+	public function getPath() : string{
+		return $this->file;
 	}
 
 	/**
@@ -265,7 +305,7 @@ class Config{
 	}
 
 	/**
-	 * @param $k
+	 * @param string $k
 	 *
 	 * @return bool|mixed
 	 */
@@ -274,15 +314,15 @@ class Config{
 	}
 
 	/**
-	 * @param $k
-	 * @param $v
+	 * @param string $k
+	 * @param mixed  $v
 	 */
 	public function __set($k, $v){
 		$this->set($k, $v);
 	}
 
 	/**
-	 * @param $k
+	 * @param string $k
 	 *
 	 * @return bool
 	 */
@@ -291,17 +331,17 @@ class Config{
 	}
 
 	/**
-	 * @param $k
+	 * @param string $k
 	 */
 	public function __unset($k){
 		$this->remove($k);
 	}
 
 	/**
-	 * @param $key
-	 * @param $value
+	 * @param string $key
+	 * @param mixed  $value
 	 */
-	public function setNested($key, $value){
+	public function setNested($key, $value) : void{
 		$vars = explode(".", $key);
 		$base = array_shift($vars);
 
@@ -325,8 +365,8 @@ class Config{
 	}
 
 	/**
-	 * @param       $key
-	 * @param mixed $default
+	 * @param string $key
+	 * @param mixed  $default
 	 *
 	 * @return mixed
 	 */
@@ -377,8 +417,8 @@ class Config{
 	}
 
 	/**
-	 * @param       $k
-	 * @param mixed $default
+	 * @param string $k
+	 * @param mixed  $default
 	 *
 	 * @return bool|mixed
 	 */
@@ -390,7 +430,7 @@ class Config{
 	 * @param string $k key to be set
 	 * @param mixed  $v value to set key
 	 */
-	public function set($k, $v = true){
+	public function set($k, $v = true) : void{
 		$this->config[$k] = $v;
 		$this->changed = true;
 		foreach($this->nestedCache as $nestedKey => $nvalue){
@@ -403,14 +443,14 @@ class Config{
 	/**
 	 * @param array $v
 	 */
-	public function setAll(array $v){
+	public function setAll(array $v) : void{
 		$this->config = $v;
 		$this->changed = true;
 	}
 
 	/**
-	 * @param      $k
-	 * @param bool $lowercase If set, searches Config in single-case / lowercase.
+	 * @param string $k
+	 * @param bool   $lowercase If set, searches Config in single-case / lowercase.
 	 *
 	 * @return bool
 	 */
@@ -425,9 +465,9 @@ class Config{
 	}
 
 	/**
-	 * @param $k
+	 * @param string $k
 	 */
-	public function remove($k){
+	public function remove($k) : void{
 		unset($this->config[$k]);
 		$this->changed = true;
 	}
@@ -444,7 +484,7 @@ class Config{
 	/**
 	 * @param array $defaults
 	 */
-	public function setDefaults(array $defaults){
+	public function setDefaults(array $defaults) : void{
 		$this->fillDefaults($defaults, $this->config);
 	}
 
@@ -478,7 +518,7 @@ class Config{
 	/**
 	 * @param string $content
 	 */
-	private function parseList(string $content){
+	private function parseList(string $content) : void{
 		foreach(explode("\n", trim(str_replace("\r\n", "\n", $content))) as $v){
 			$v = trim($v);
 			if($v == ""){
@@ -508,8 +548,8 @@ class Config{
 	/**
 	 * @param string $content
 	 */
-	private function parseProperties(string $content){
-		if(preg_match_all('/([a-zA-Z0-9\-_\.]+)[ \t]*=([^\r\n]*)/u', $content, $matches) > 0){ //false or 0 matches
+	private function parseProperties(string $content) : void{
+		if(preg_match_all('/^\s*([a-zA-Z0-9\-_\.]+)[ \t]*=([^\r\n]*)/um', $content, $matches) > 0){ //false or 0 matches
 			foreach($matches[1] as $i => $k){
 				$v = trim($matches[2][$i]);
 				switch(strtolower($v)){
@@ -525,7 +565,7 @@ class Config{
 						break;
 				}
 				if(isset($this->config[$k])){
-					MainLogger::getLogger()->debug("[Config] Repeated property " . $k . " on file " . $this->file);
+					\GlobalLogger::get()->debug("[Config] Repeated property " . $k . " on file " . $this->file);
 				}
 				$this->config[$k] = $v;
 			}

@@ -23,18 +23,23 @@ declare(strict_types=1);
 
 namespace pocketmine\entity\projectile;
 
-use pocketmine\block\Block;
 use pocketmine\block\BlockFactory;
-use pocketmine\entity\EffectInstance;
+use pocketmine\block\BlockLegacyIds;
+use pocketmine\entity\effect\EffectInstance;
+use pocketmine\entity\effect\InstantEffect;
 use pocketmine\entity\Living;
 use pocketmine\event\entity\ProjectileHitBlockEvent;
 use pocketmine\event\entity\ProjectileHitEntityEvent;
 use pocketmine\event\entity\ProjectileHitEvent;
 use pocketmine\item\Potion;
 use pocketmine\nbt\tag\CompoundTag;
-use pocketmine\network\mcpe\protocol\LevelEventPacket;
-use pocketmine\network\mcpe\protocol\LevelSoundEventPacket;
+use pocketmine\network\mcpe\protocol\types\EntityMetadataFlags;
+use pocketmine\network\mcpe\protocol\types\EntityMetadataProperties;
 use pocketmine\utils\Color;
+use pocketmine\world\particle\PotionSplashParticle;
+use pocketmine\world\sound\PotionSplashSound;
+use function round;
+use function sqrt;
 
 class SplashPotion extends Throwable{
 
@@ -65,9 +70,7 @@ class SplashPotion extends Throwable{
 		$hasEffects = true;
 
 		if(empty($effects)){
-			$colors = [
-				new Color(0x38, 0x5d, 0xc6) //Default colour for splash water bottle and similar with no effects.
-			];
+			$particle = new PotionSplashParticle(PotionSplashParticle::DEFAULT_COLOR());
 			$hasEffects = false;
 		}else{
 			$colors = [];
@@ -77,16 +80,17 @@ class SplashPotion extends Throwable{
 					$colors[] = $effect->getColor();
 				}
 			}
+			$particle = new PotionSplashParticle(Color::mix(...$colors));
 		}
 
-		$this->level->broadcastLevelEvent($this, LevelEventPacket::EVENT_PARTICLE_SPLASH, Color::mix(...$colors)->toARGB());
-		$this->level->broadcastLevelSoundEvent($this, LevelSoundEventPacket::SOUND_GLASS);
+		$this->world->addParticle($this, $particle);
+		$this->world->addSound($this, new PotionSplashSound());
 
 		if($hasEffects){
 			if(!$this->willLinger()){
-				foreach($this->level->getNearbyEntities($this->boundingBox->expandedCopy(4.125, 2.125, 4.125), $this) as $entity){
+				foreach($this->world->getNearbyEntities($this->boundingBox->expandedCopy(4.125, 2.125, 4.125), $this) as $entity){
 					if($entity instanceof Living and $entity->isAlive()){
-						$distanceSquared = $entity->distanceSquared($this);
+						$distanceSquared = $entity->add(0, $entity->getEyeHeight(), 0)->distanceSquared($this);
 						if($distanceSquared > 16){ //4 blocks
 							continue;
 						}
@@ -99,7 +103,7 @@ class SplashPotion extends Throwable{
 						foreach($this->getPotionEffects() as $effect){
 							//getPotionEffects() is used to get COPIES to avoid accidentally modifying the same effect instance already applied to another entity
 
-							if(!$effect->getType()->isInstantEffect()){
+							if(!($effect->getType() instanceof InstantEffect)){
 								$newDuration = (int) round($effect->getDuration() * 0.75 * $distanceMultiplier);
 								if($newDuration < 20){
 									continue;
@@ -107,7 +111,7 @@ class SplashPotion extends Throwable{
 								$effect->setDuration($newDuration);
 								$entity->addEffect($effect);
 							}else{
-								$effect->getType()->applyEffect($entity, $effect, $distanceMultiplier, $this, $this->getOwningEntity());
+								$effect->getType()->applyEffect($entity, $effect, $distanceMultiplier, $this);
 							}
 						}
 					}
@@ -118,12 +122,12 @@ class SplashPotion extends Throwable{
 		}elseif($event instanceof ProjectileHitBlockEvent and $this->getPotionId() === Potion::WATER){
 			$blockIn = $event->getBlockHit()->getSide($event->getRayTraceResult()->getHitFace());
 
-			if($blockIn->getId() === Block::FIRE){
-				$this->level->setBlock($blockIn, BlockFactory::get(Block::AIR));
+			if($blockIn->getId() === BlockLegacyIds::FIRE){
+				$this->world->setBlock($blockIn, BlockFactory::get(BlockLegacyIds::AIR));
 			}
 			foreach($blockIn->getHorizontalSides() as $horizontalSide){
-				if($horizontalSide->getId() === Block::FIRE){
-					$this->level->setBlock($horizontalSide, BlockFactory::get(Block::AIR));
+				if($horizontalSide->getId() === BlockLegacyIds::FIRE){
+					$this->world->setBlock($horizontalSide, BlockFactory::get(BlockLegacyIds::AIR));
 				}
 			}
 		}
@@ -134,14 +138,14 @@ class SplashPotion extends Throwable{
 	 * @return int
 	 */
 	public function getPotionId() : int{
-		return $this->propertyManager->getShort(self::DATA_POTION_AUX_VALUE) ?? 0;
+		return $this->propertyManager->getShort(EntityMetadataProperties::POTION_AUX_VALUE) ?? 0;
 	}
 
 	/**
 	 * @param int $id
 	 */
 	public function setPotionId(int $id) : void{
-		$this->propertyManager->setShort(self::DATA_POTION_AUX_VALUE, $id);
+		$this->propertyManager->setShort(EntityMetadataProperties::POTION_AUX_VALUE, $id);
 	}
 
 	/**
@@ -149,7 +153,7 @@ class SplashPotion extends Throwable{
 	 * @return bool
 	 */
 	public function willLinger() : bool{
-		return $this->getDataFlag(self::DATA_FLAGS, self::DATA_FLAG_LINGER);
+		return $this->getDataFlag(EntityMetadataProperties::FLAGS, EntityMetadataFlags::LINGER);
 	}
 
 	/**
@@ -158,7 +162,7 @@ class SplashPotion extends Throwable{
 	 * @param bool $value
 	 */
 	public function setLinger(bool $value = true) : void{
-		$this->setDataFlag(self::DATA_FLAGS, self::DATA_FLAG_LINGER, $value);
+		$this->setDataFlag(EntityMetadataProperties::FLAGS, EntityMetadataFlags::LINGER, $value);
 	}
 
 	/**

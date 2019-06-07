@@ -23,22 +23,10 @@ declare(strict_types=1);
 
 namespace pocketmine\block;
 
-use pocketmine\block\utils\WoodType;
-
 class WoodenSlab extends Slab{
 
-	protected $id = self::WOODEN_SLAB;
-
-	public function __construct(int $variant = 0){
-		parent::__construct(self::WOODEN_SLAB, self::DOUBLE_WOODEN_SLAB, $variant, WoodType::NAMES[$variant]);
-	}
-
-	public function getHardness() : float{
-		return 2;
-	}
-
-	public function getToolType() : int{
-		return BlockToolType::TYPE_AXE;
+	public function __construct(BlockIdentifierFlattened $idInfo, string $name, ?BlockBreakInfo $breakInfo = null){
+		parent::__construct($idInfo, $name, $breakInfo ?? new BlockBreakInfo(2.0, BlockToolType::TYPE_AXE, 0, 15.0));
 	}
 
 	public function getFuelTime() : int{

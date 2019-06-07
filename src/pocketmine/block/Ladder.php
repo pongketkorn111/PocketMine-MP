@@ -23,6 +23,7 @@ declare(strict_types=1);
 
 namespace pocketmine\block;
 
+use pocketmine\block\utils\BlockDataValidator;
 use pocketmine\entity\Entity;
 use pocketmine\item\Item;
 use pocketmine\math\AxisAlignedBB;
@@ -32,29 +33,23 @@ use pocketmine\Player;
 
 class Ladder extends Transparent{
 
-	protected $id = self::LADDER;
-
 	/** @var int */
 	protected $facing = Facing::NORTH;
 
-	public function __construct(){
-
+	public function __construct(BlockIdentifier $idInfo, string $name, ?BlockBreakInfo $breakInfo = null){
+		parent::__construct($idInfo, $name, $breakInfo ?? new BlockBreakInfo(0.4, BlockToolType::TYPE_AXE));
 	}
 
 	protected function writeStateToMeta() : int{
 		return $this->facing;
 	}
 
-	public function readStateFromMeta(int $meta) : void{
-		$this->facing = $meta;
+	public function readStateFromData(int $id, int $stateMeta) : void{
+		$this->facing = BlockDataValidator::readHorizontalFacing($stateMeta);
 	}
 
 	public function getStateBitmask() : int{
 		return 0b111;
-	}
-
-	public function getName() : string{
-		return "Ladder";
 	}
 
 	public function hasEntityCollision() : bool{
@@ -65,47 +60,23 @@ class Ladder extends Transparent{
 		return false;
 	}
 
-	public function getHardness() : float{
-		return 0.4;
-	}
-
 	public function canClimb() : bool{
 		return true;
 	}
 
-	public function onEntityCollide(Entity $entity) : void{
-		$entity->resetFallDistance();
-		$entity->onGround = true;
+	public function onEntityInside(Entity $entity) : void{
+		if($entity->asVector3()->floor()->distanceSquared($this) < 1){ //entity coordinates must be inside block
+			$entity->resetFallDistance();
+			$entity->onGround = true;
+		}
 	}
 
 	protected function recalculateBoundingBox() : ?AxisAlignedBB{
-		$f = 0.1875;
-
-		$minX = $minZ = 0;
-		$maxX = $maxZ = 1;
-
-		if($this->facing === Facing::NORTH){
-			$minZ = 1 - $f;
-		}elseif($this->facing === Facing::SOUTH){
-			$maxZ = $f;
-		}elseif($this->facing === Facing::WEST){
-			$minX = 1 - $f;
-		}elseif($this->facing === Facing::EAST){
-			$maxX = $f;
-		}
-
-		return new AxisAlignedBB(
-			$minX,
-			0,
-			$minZ,
-			$maxX,
-			1,
-			$maxZ
-		);
+		return AxisAlignedBB::one()->trim($this->facing, 13 / 16);
 	}
 
 
-	public function place(Item $item, Block $blockReplace, Block $blockClicked, int $face, Vector3 $clickVector, Player $player = null) : bool{
+	public function place(Item $item, Block $blockReplace, Block $blockClicked, int $face, Vector3 $clickVector, ?Player $player = null) : bool{
 		if(!$blockClicked->isTransparent() and Facing::axis($face) !== Facing::AXIS_Y){
 			$this->facing = $face;
 			return parent::place($item, $blockReplace, $blockClicked, $face, $clickVector, $player);
@@ -116,11 +87,7 @@ class Ladder extends Transparent{
 
 	public function onNearbyBlockChange() : void{
 		if(!$this->getSide(Facing::opposite($this->facing))->isSolid()){ //Replace with common break method
-			$this->level->useBreakOn($this);
+			$this->world->useBreakOn($this);
 		}
-	}
-
-	public function getToolType() : int{
-		return BlockToolType::TYPE_AXE;
 	}
 }

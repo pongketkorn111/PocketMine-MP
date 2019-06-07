@@ -27,6 +27,7 @@ use pocketmine\event\Event;
 use pocketmine\network\mcpe\NetworkSession;
 use pocketmine\network\NetworkInterface;
 use pocketmine\Player;
+use function is_a;
 
 /**
  * Allows the creation of players overriding the base Player class
@@ -87,7 +88,7 @@ class PlayerCreationEvent extends Event{
 	/**
 	 * @param Player::class $class
 	 */
-	public function setBaseClass($class){
+	public function setBaseClass($class) : void{
 		if(!is_a($class, $this->baseClass, true)){
 			throw new \RuntimeException("Base class $class must extend " . $this->baseClass);
 		}
@@ -105,7 +106,7 @@ class PlayerCreationEvent extends Event{
 	/**
 	 * @param Player::class $class
 	 */
-	public function setPlayerClass($class){
+	public function setPlayerClass($class) : void{
 		if(!is_a($class, $this->baseClass, true)){
 			throw new \RuntimeException("Class $class must extend " . $this->baseClass);
 		}

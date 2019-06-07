@@ -24,6 +24,7 @@ declare(strict_types=1);
 namespace pocketmine\event\player;
 
 use pocketmine\event\Cancellable;
+use pocketmine\event\CancellableTrait;
 use pocketmine\permission\PermissionManager;
 use pocketmine\Player;
 use pocketmine\Server;
@@ -32,6 +33,8 @@ use pocketmine\Server;
  * Called when a player chats something
  */
 class PlayerChatEvent extends PlayerEvent implements Cancellable{
+	use CancellableTrait;
+
 	/** @var string */
 	protected $message;
 
@@ -49,7 +52,7 @@ class PlayerChatEvent extends PlayerEvent implements Cancellable{
 	 * @param string   $format
 	 * @param Player[] $recipients
 	 */
-	public function __construct(Player $player, string $message, string $format = "chat.type.text", array $recipients = null){
+	public function __construct(Player $player, string $message, string $format = "chat.type.text", ?array $recipients = null){
 		$this->player = $player;
 		$this->message = $message;
 

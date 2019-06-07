@@ -23,12 +23,27 @@ declare(strict_types=1);
 
 namespace pocketmine\utils;
 
+use function bin2hex;
+use function getmypid;
+use function getmyuid;
+use function hash;
+use function hex2bin;
+use function implode;
+use function mt_rand;
+use function str_replace;
+use function strlen;
+use function substr;
+use function time;
+use function trim;
+
 class UUID{
 
-	private $parts = [0, 0, 0, 0];
-	private $version = null;
+	/** @var int[] */
+	private $parts;
+	/** @var int */
+	private $version;
 
-	public function __construct(int $part1 = 0, int $part2 = 0, int $part3 = 0, int $part4 = 0, int $version = null){
+	public function __construct(int $part1 = 0, int $part2 = 0, int $part3 = 0, int $part4 = 0, ?int $version = null){
 		$this->parts = [$part1, $part2, $part3, $part4];
 
 		$this->version = $version ?? ($this->parts[1] & 0xf000) >> 12;
@@ -50,7 +65,7 @@ class UUID{
 	 *
 	 * @return UUID
 	 */
-	public static function fromString(string $uuid, int $version = null) : UUID{
+	public static function fromString(string $uuid, ?int $version = null) : UUID{
 		return self::fromBinary(hex2bin(str_replace("-", "", trim($uuid))), $version);
 	}
 
@@ -64,7 +79,7 @@ class UUID{
 	 *
 	 * @throws \InvalidArgumentException
 	 */
-	public static function fromBinary(string $uuid, int $version = null) : UUID{
+	public static function fromBinary(string $uuid, ?int $version = null) : UUID{
 		if(strlen($uuid) !== 16){
 			throw new \InvalidArgumentException("Must have exactly 16 bytes");
 		}

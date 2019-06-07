@@ -24,9 +24,9 @@ declare(strict_types=1);
 
 namespace pocketmine\block;
 
+use pocketmine\block\utils\BlockDataValidator;
 use pocketmine\item\Item;
 use pocketmine\item\TieredTool;
-use pocketmine\math\Bearing;
 use pocketmine\math\Facing;
 use pocketmine\math\Vector3;
 use pocketmine\Player;
@@ -36,33 +36,25 @@ class GlazedTerracotta extends Solid{
 	/** @var int */
 	protected $facing = Facing::NORTH;
 
+	public function __construct(BlockIdentifier $idInfo, string $name, ?BlockBreakInfo $breakInfo = null){
+		parent::__construct($idInfo, $name, $breakInfo ?? new BlockBreakInfo(1.4, BlockToolType::TYPE_PICKAXE, TieredTool::TIER_WOODEN));
+	}
+
 	protected function writeStateToMeta() : int{
 		return $this->facing;
 	}
 
-	public function readStateFromMeta(int $meta) : void{
-		$this->facing = $meta;
+	public function readStateFromData(int $id, int $stateMeta) : void{
+		$this->facing = BlockDataValidator::readHorizontalFacing($stateMeta);
 	}
 
 	public function getStateBitmask() : int{
 		return 0b111;
 	}
 
-	public function getHardness() : float{
-		return 1.4;
-	}
-
-	public function getToolType() : int{
-		return BlockToolType::TYPE_PICKAXE;
-	}
-
-	public function getToolHarvestLevel() : int{
-		return TieredTool::TIER_WOODEN;
-	}
-
-	public function place(Item $item, Block $blockReplace, Block $blockClicked, int $face, Vector3 $clickVector, Player $player = null) : bool{
+	public function place(Item $item, Block $blockReplace, Block $blockClicked, int $face, Vector3 $clickVector, ?Player $player = null) : bool{
 		if($player !== null){
-			$this->facing = Bearing::toFacing(Bearing::opposite($player->getDirection()));
+			$this->facing = Facing::opposite($player->getHorizontalFacing());
 		}
 
 		return parent::place($item, $blockReplace, $blockClicked, $face, $clickVector, $player);

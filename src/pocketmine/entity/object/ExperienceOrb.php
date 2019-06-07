@@ -28,7 +28,9 @@ use pocketmine\entity\Human;
 use pocketmine\nbt\tag\CompoundTag;
 use pocketmine\nbt\tag\IntTag;
 use pocketmine\nbt\tag\ShortTag;
+use pocketmine\network\mcpe\protocol\types\EntityMetadataProperties;
 use pocketmine\Player;
+use function sqrt;
 
 class ExperienceOrb extends Entity{
 	public const NETWORK_ID = self::XP_ORB;
@@ -131,14 +133,14 @@ class ExperienceOrb extends Entity{
 	}
 
 	public function getXpValue() : int{
-		return $this->propertyManager->getInt(self::DATA_EXPERIENCE_VALUE) ?? 0;
+		return $this->propertyManager->getInt(EntityMetadataProperties::EXPERIENCE_VALUE) ?? 0;
 	}
 
 	public function setXpValue(int $amount) : void{
 		if($amount <= 0){
 			throw new \InvalidArgumentException("XP amount must be greater than 0, got $amount");
 		}
-		$this->propertyManager->setInt(self::DATA_EXPERIENCE_VALUE, $amount);
+		$this->propertyManager->setInt(EntityMetadataProperties::EXPERIENCE_VALUE, $amount);
 	}
 
 	public function hasTargetPlayer() : bool{
@@ -150,7 +152,7 @@ class ExperienceOrb extends Entity{
 			return null;
 		}
 
-		$entity = $this->server->findEntity($this->targetPlayerRuntimeId);
+		$entity = $this->world->getEntity($this->targetPlayerRuntimeId);
 		if($entity instanceof Human){
 			return $entity;
 		}
@@ -159,10 +161,10 @@ class ExperienceOrb extends Entity{
 	}
 
 	public function setTargetPlayer(?Human $player) : void{
-		$this->targetPlayerRuntimeId = $player ? $player->getId() : null;
+		$this->targetPlayerRuntimeId = $player !== null ? $player->getId() : null;
 	}
 
-	public function entityBaseTick(int $tickDiff = 1) : bool{
+	protected function entityBaseTick(int $tickDiff = 1) : bool{
 		$hasUpdate = parent::entityBaseTick($tickDiff);
 
 		$this->age += $tickDiff;
@@ -178,7 +180,7 @@ class ExperienceOrb extends Entity{
 
 		if($this->lookForTargetTime >= 20){
 			if($currentTarget === null){
-				$newTarget = $this->level->getNearestEntity($this, self::MAX_TARGET_DISTANCE, Human::class);
+				$newTarget = $this->world->getNearestEntity($this, self::MAX_TARGET_DISTANCE, Human::class);
 
 				if($newTarget instanceof Human and !($newTarget instanceof Player and $newTarget->isSpectator())){
 					$currentTarget = $newTarget;
@@ -193,15 +195,15 @@ class ExperienceOrb extends Entity{
 		$this->setTargetPlayer($currentTarget);
 
 		if($currentTarget !== null){
-			$vector = $currentTarget->subtract($this)->add(0, $currentTarget->getEyeHeight() / 2, 0)->divide(self::MAX_TARGET_DISTANCE);
+			$vector = $currentTarget->add(0, $currentTarget->getEyeHeight() / 2, 0)->subtract($this)->divide(self::MAX_TARGET_DISTANCE);
 
-			$distance = $vector->length();
-			$oneMinusDistance = (1 - $distance) ** 2;
+			$distance = $vector->lengthSquared();
+			if($distance < 1){
+				$diff = $vector->normalize()->multiply(0.2 * (1 - sqrt($distance)) ** 2);
 
-			if($oneMinusDistance > 0){
-				$this->motion->x += $vector->x / $distance * $oneMinusDistance * 0.2;
-				$this->motion->y += $vector->y / $distance * $oneMinusDistance * 0.2;
-				$this->motion->z += $vector->z / $distance * $oneMinusDistance * 0.2;
+				$this->motion->x += $diff->x;
+				$this->motion->y += $diff->y;
+				$this->motion->z += $diff->z;
 			}
 
 			if($currentTarget->canPickupXp() and $this->boundingBox->intersectsWith($currentTarget->getBoundingBox())){

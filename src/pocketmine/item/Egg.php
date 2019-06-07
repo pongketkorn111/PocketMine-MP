@@ -23,17 +23,16 @@ declare(strict_types=1);
 
 namespace pocketmine\item;
 
+use pocketmine\entity\projectile\Egg as EggEntity;
+
 class Egg extends ProjectileItem{
-	public function __construct(){
-		parent::__construct(self::EGG, 0, "Egg");
-	}
 
 	public function getMaxStackSize() : int{
 		return 16;
 	}
 
-	public function getProjectileEntityType() : string{
-		return "Egg";
+	public function getProjectileEntityClass() : string{
+		return EggEntity::class;
 	}
 
 	public function getThrowForce() : float{

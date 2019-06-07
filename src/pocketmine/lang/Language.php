@@ -23,6 +23,22 @@ declare(strict_types=1);
 
 namespace pocketmine\lang;
 
+use function array_filter;
+use function array_map;
+use function explode;
+use function file_exists;
+use function is_dir;
+use function ord;
+use function parse_ini_file;
+use function scandir;
+use function str_replace;
+use function strlen;
+use function strpos;
+use function strtolower;
+use function substr;
+use const INI_SCANNER_RAW;
+use const SCANDIR_SORT_NONE;
+
 class Language{
 
 	public const FALLBACK_LANGUAGE = "eng";
@@ -35,7 +51,7 @@ class Language{
 	 */
 	public static function getLanguageList(string $path = "") : array{
 		if($path === ""){
-			$path = \pocketmine\PATH . "src/pocketmine/lang/locale/";
+			$path = \pocketmine\RESOURCE_PATH . "locale/";
 		}
 
 		if(is_dir($path)){
@@ -78,11 +94,11 @@ class Language{
 	 *
 	 * @throws LanguageNotFoundException
 	 */
-	public function __construct(string $lang, string $path = null, string $fallback = self::FALLBACK_LANGUAGE){
+	public function __construct(string $lang, ?string $path = null, string $fallback = self::FALLBACK_LANGUAGE){
 		$this->langName = strtolower($lang);
 
 		if($path === null){
-			$path = \pocketmine\PATH . "src/pocketmine/lang/locale/";
+			$path = \pocketmine\RESOURCE_PATH . "locale/";
 		}
 
 		$this->lang = self::loadLang($path, $this->langName);
@@ -100,7 +116,7 @@ class Language{
 	protected static function loadLang(string $path, string $languageCode) : array{
 		$file = $path . $languageCode . ".ini";
 		if(file_exists($file)){
-			return array_map('stripcslashes', parse_ini_file($file, false, INI_SCANNER_RAW));
+			return array_map('\stripcslashes', parse_ini_file($file, false, INI_SCANNER_RAW));
 		}
 
 		throw new LanguageNotFoundException("Language \"$languageCode\" not found");
@@ -113,7 +129,7 @@ class Language{
 	 *
 	 * @return string
 	 */
-	public function translateString(string $str, array $params = [], string $onlyPrefix = null) : string{
+	public function translateString(string $str, array $params = [], ?string $onlyPrefix = null) : string{
 		$baseText = $this->get($str);
 		$baseText = $this->parseTranslation(($baseText !== null and ($onlyPrefix === null or strpos($str, $onlyPrefix) === 0)) ? $baseText : $str, $onlyPrefix);
 
@@ -144,7 +160,7 @@ class Language{
 	 *
 	 * @return string|null
 	 */
-	protected function internalGet(string $id){
+	protected function internalGet(string $id) : ?string{
 		return $this->lang[$id] ?? $this->fallbackLang[$id] ?? null;
 	}
 
@@ -163,7 +179,7 @@ class Language{
 	 *
 	 * @return string
 	 */
-	protected function parseTranslation(string $text, string $onlyPrefix = null) : string{
+	protected function parseTranslation(string $text, ?string $onlyPrefix = null) : string{
 		$newString = "";
 
 		$replaceString = null;

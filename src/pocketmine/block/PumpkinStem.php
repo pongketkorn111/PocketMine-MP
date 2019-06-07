@@ -23,19 +23,9 @@ declare(strict_types=1);
 
 namespace pocketmine\block;
 
-use pocketmine\item\Item;
-
 class PumpkinStem extends Stem{
 
-	protected $id = self::PUMPKIN_STEM;
-
-	protected $itemId = Item::PUMPKIN_SEEDS;
-
-	public function getName() : string{
-		return "Pumpkin Stem";
-	}
-
 	protected function getPlant() : Block{
-		return BlockFactory::get(Block::PUMPKIN);
+		return BlockFactory::get(BlockLegacyIds::PUMPKIN);
 	}
 }

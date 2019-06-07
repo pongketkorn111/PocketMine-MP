@@ -24,6 +24,8 @@ declare(strict_types=1);
 namespace pocketmine\network\mcpe\handler;
 
 use pocketmine\network\mcpe\NetworkSession;
+use pocketmine\network\mcpe\protocol\AvailableEntityIdentifiersPacket;
+use pocketmine\network\mcpe\protocol\BiomeDefinitionListPacket;
 use pocketmine\network\mcpe\protocol\RequestChunkRadiusPacket;
 use pocketmine\network\mcpe\protocol\SetLocalPlayerAsInitializedPacket;
 use pocketmine\network\mcpe\protocol\StartGamePacket;
@@ -55,19 +57,19 @@ class PreSpawnSessionHandler extends SessionHandler{
 		$pk = new StartGamePacket();
 		$pk->entityUniqueId = $this->player->getId();
 		$pk->entityRuntimeId = $this->player->getId();
-		$pk->playerGamemode = Player::getClientFriendlyGamemode($this->player->getGamemode());
+		$pk->playerGamemode = NetworkSession::getClientFriendlyGamemode($this->player->getGamemode());
 		$pk->playerPosition = $this->player->getOffsetPosition($this->player);
 		$pk->pitch = $this->player->pitch;
 		$pk->yaw = $this->player->yaw;
 		$pk->seed = -1;
 		$pk->dimension = DimensionIds::OVERWORLD; //TODO: implement this properly
-		$pk->worldGamemode = Player::getClientFriendlyGamemode($this->server->getGamemode());
-		$pk->difficulty = $this->player->getLevel()->getDifficulty();
+		$pk->worldGamemode = NetworkSession::getClientFriendlyGamemode($this->server->getGamemode());
+		$pk->difficulty = $this->player->getWorld()->getDifficulty();
 		$pk->spawnX = $spawnPosition->getFloorX();
 		$pk->spawnY = $spawnPosition->getFloorY();
 		$pk->spawnZ = $spawnPosition->getFloorZ();
 		$pk->hasAchievementsDisabled = true;
-		$pk->time = $this->player->getLevel()->getTime();
+		$pk->time = $this->player->getWorld()->getTime();
 		$pk->eduMode = false;
 		$pk->rainLevel = 0; //TODO: implement these properly
 		$pk->lightningLevel = 0;
@@ -76,13 +78,16 @@ class PreSpawnSessionHandler extends SessionHandler{
 		$pk->worldName = $this->server->getMotd();
 		$this->session->sendDataPacket($pk);
 
+		$this->session->sendDataPacket(new AvailableEntityIdentifiersPacket());
+		$this->session->sendDataPacket(new BiomeDefinitionListPacket());
+
 		$this->player->setImmobile(); //HACK: fix client-side falling pre-spawn
 
-		$this->player->getLevel()->sendTime($this->player);
+		$this->player->getWorld()->sendTime($this->player);
 
-		$this->player->sendAttributes(true);
-		$this->player->sendCommandData();
-		$this->player->sendSettings();
+		$this->session->syncAttributes($this->player, true);
+		$this->session->syncAvailableCommands();
+		$this->session->syncAdventureSettings($this->player);
 		$this->player->sendPotionEffects($this->player);
 		$this->player->sendData($this->player);
 

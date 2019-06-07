@@ -45,7 +45,6 @@ use pocketmine\command\defaults\PardonCommand;
 use pocketmine\command\defaults\PardonIpCommand;
 use pocketmine\command\defaults\ParticleCommand;
 use pocketmine\command\defaults\PluginsCommand;
-use pocketmine\command\defaults\ReloadCommand;
 use pocketmine\command\defaults\SaveCommand;
 use pocketmine\command\defaults\SaveOffCommand;
 use pocketmine\command\defaults\SaveOnCommand;
@@ -65,9 +64,17 @@ use pocketmine\command\defaults\VanillaCommand;
 use pocketmine\command\defaults\VersionCommand;
 use pocketmine\command\defaults\WhitelistCommand;
 use pocketmine\command\utils\InvalidCommandSyntaxException;
-use pocketmine\lang\TranslationContainer;
 use pocketmine\Server;
-use pocketmine\utils\TextFormat;
+use function array_shift;
+use function count;
+use function explode;
+use function implode;
+use function min;
+use function preg_match_all;
+use function stripslashes;
+use function strpos;
+use function strtolower;
+use function trim;
 
 class SimpleCommandMap implements CommandMap{
 
@@ -84,7 +91,7 @@ class SimpleCommandMap implements CommandMap{
 		$this->setDefaultCommands();
 	}
 
-	private function setDefaultCommands(){
+	private function setDefaultCommands() : void{
 		$this->registerAll("pocketmine", [
 			new BanCommand("ban"),
 			new BanIpCommand("ban-ip"),
@@ -92,9 +99,11 @@ class SimpleCommandMap implements CommandMap{
 			new DefaultGamemodeCommand("defaultgamemode"),
 			new DeopCommand("deop"),
 			new DifficultyCommand("difficulty"),
+			new DumpMemoryCommand("dumpmemory"),
 			new EffectCommand("effect"),
 			new EnchantCommand("enchant"),
 			new GamemodeCommand("gamemode"),
+			new GarbageCollectorCommand("gc"),
 			new GiveCommand("give"),
 			new HelpCommand("help"),
 			new KickCommand("kick"),
@@ -106,7 +115,6 @@ class SimpleCommandMap implements CommandMap{
 			new PardonIpCommand("pardon-ip"),
 			new ParticleCommand("particle"),
 			new PluginsCommand("plugins"),
-			new ReloadCommand("reload"),
 			new SaveCommand("save-all"),
 			new SaveOffCommand("save-off"),
 			new SaveOnCommand("save-on"),
@@ -114,6 +122,7 @@ class SimpleCommandMap implements CommandMap{
 			new SeedCommand("seed"),
 			new SetWorldSpawnCommand("setworldspawn"),
 			new SpawnpointCommand("spawnpoint"),
+			new StatusCommand("status"),
 			new StopCommand("stop"),
 			new TeleportCommand("tp"),
 			new TellCommand("tell"),
@@ -124,18 +133,10 @@ class SimpleCommandMap implements CommandMap{
 			new VersionCommand("version"),
 			new WhitelistCommand("whitelist")
 		]);
-
-		if($this->server->getProperty("debug.commands", false)){
-			$this->registerAll("pocketmine", [
-				new StatusCommand("status"),
-				new GarbageCollectorCommand("gc"),
-				new DumpMemoryCommand("dumpmemory")
-			]);
-		}
 	}
 
 
-	public function registerAll(string $fallbackPrefix, array $commands){
+	public function registerAll(string $fallbackPrefix, array $commands) : void{
 		foreach($commands as $command){
 			$this->register($fallbackPrefix, $command);
 		}
@@ -148,7 +149,7 @@ class SimpleCommandMap implements CommandMap{
 	 *
 	 * @return bool
 	 */
-	public function register(string $fallbackPrefix, Command $command, string $label = null) : bool{
+	public function register(string $fallbackPrefix, Command $command, ?string $label = null) : bool{
 		if($label === null){
 			$label = $command->getName();
 		}
@@ -228,7 +229,7 @@ class SimpleCommandMap implements CommandMap{
 	 *
 	 * @return Command|null
 	 */
-	public function matchCommand(string &$commandName, array &$args){
+	public function matchCommand(string &$commandName, array &$args) : ?Command{
 		$count = min(count($args), 255);
 
 		for($i = 0; $i < $count; ++$i){
@@ -244,7 +245,16 @@ class SimpleCommandMap implements CommandMap{
 	}
 
 	public function dispatch(CommandSender $sender, string $commandLine) : bool{
-		$args = array_map("stripslashes", str_getcsv($commandLine, " "));
+		$args = [];
+		preg_match_all('/"((?:\\\\.|[^\\\\"])*)"|(\S+)/u', $commandLine, $matches);
+		foreach($matches[0] as $k => $_){
+			for($i = 1; $i <= 2; ++$i){
+				if($matches[$i][$k] !== ""){
+					$args[$k] = stripslashes($matches[$i][$k]);
+					break;
+				}
+			}
+		}
 		$sentCommandLabel = "";
 		$target = $this->matchCommand($sentCommandLabel, $args);
 
@@ -258,18 +268,14 @@ class SimpleCommandMap implements CommandMap{
 			$target->execute($sender, $sentCommandLabel, $args);
 		}catch(InvalidCommandSyntaxException $e){
 			$sender->sendMessage($this->server->getLanguage()->translateString("commands.generic.usage", [$target->getUsage()]));
-		}catch(\Throwable $e){
-			$sender->sendMessage(new TranslationContainer(TextFormat::RED . "%commands.generic.exception"));
-			$this->server->getLogger()->critical($this->server->getLanguage()->translateString("pocketmine.command.exception", [$commandLine, (string) $target, $e->getMessage()]));
-			$sender->getServer()->getLogger()->logException($e);
+		}finally{
+			$target->timings->stopTiming();
 		}
-
-		$target->timings->stopTiming();
 
 		return true;
 	}
 
-	public function clearCommands(){
+	public function clearCommands() : void{
 		foreach($this->knownCommands as $command){
 			$command->unregister($this);
 		}
@@ -277,7 +283,7 @@ class SimpleCommandMap implements CommandMap{
 		$this->setDefaultCommands();
 	}
 
-	public function getCommand(string $name){
+	public function getCommand(string $name) : ?Command{
 		return $this->knownCommands[$name] ?? null;
 	}
 
@@ -292,7 +298,7 @@ class SimpleCommandMap implements CommandMap{
 	/**
 	 * @return void
 	 */
-	public function registerServerAliases(){
+	public function registerServerAliases() : void{
 		$values = $this->server->getCommandAliases();
 
 		foreach($values as $alias => $commandStrings){

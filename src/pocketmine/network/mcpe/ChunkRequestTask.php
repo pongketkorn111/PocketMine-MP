@@ -23,60 +23,54 @@ declare(strict_types=1);
 
 namespace pocketmine\network\mcpe;
 
-use pocketmine\level\format\Chunk;
+use pocketmine\world\format\Chunk;
 use pocketmine\network\mcpe\protocol\FullChunkDataPacket;
 use pocketmine\scheduler\AsyncTask;
-use pocketmine\tile\Spawnable;
 
 class ChunkRequestTask extends AsyncTask{
+	private const TLS_KEY_PROMISE = "promise";
+	private const TLS_KEY_ERROR_HOOK = "errorHook";
+
 	/** @var string */
 	protected $chunk;
 	/** @var int */
 	protected $chunkX;
 	/** @var int */
 	protected $chunkZ;
-	/** @var string */
-	protected $tiles;
-	/** @var int */
+
 	protected $compressionLevel;
 
-	public function __construct(int $chunkX, int $chunkZ, Chunk $chunk, CompressBatchPromise $promise){
+	public function __construct(int $chunkX, int $chunkZ, Chunk $chunk, CompressBatchPromise $promise, ?\Closure $onError = null){
 		$this->compressionLevel = NetworkCompression::$LEVEL;
 
-		$this->chunk = $chunk->fastSerialize();
+		$this->chunk = $chunk->networkSerialize();
 		$this->chunkX = $chunkX;
 		$this->chunkZ = $chunkZ;
 
-		//TODO: serialize tiles with chunks
-		$tiles = "";
-		foreach($chunk->getTiles() as $tile){
-			if($tile instanceof Spawnable){
-				$tiles .= $tile->getSerializedSpawnCompound();
-			}
-		}
-
-		$this->tiles = $tiles;
-
-		$this->storeLocal($promise);
+		$this->storeLocal(self::TLS_KEY_PROMISE, $promise);
+		$this->storeLocal(self::TLS_KEY_ERROR_HOOK, $onError);
 	}
 
 	public function onRun() : void{
-		$chunk = Chunk::fastDeserialize($this->chunk);
-
 		$pk = new FullChunkDataPacket();
 		$pk->chunkX = $this->chunkX;
 		$pk->chunkZ = $this->chunkZ;
-		$pk->data = $chunk->networkSerialize() . $this->tiles;
+		$pk->data = $this->chunk;
 
-		$stream = new PacketStream();
-		$stream->putPacket($pk);
+		$this->setResult(NetworkCompression::compress(PacketBatch::fromPackets($pk)->getBuffer(), $this->compressionLevel));
+	}
 
-		$this->setResult(NetworkCompression::compress($stream->buffer, $this->compressionLevel), false);
+	public function onError() : void{
+		/** @var \Closure $hook */
+		$hook = $this->fetchLocal(self::TLS_KEY_ERROR_HOOK);
+		if($hook !== null){
+			$hook();
+		}
 	}
 
 	public function onCompletion() : void{
 		/** @var CompressBatchPromise $promise */
-		$promise = $this->fetchLocal();
+		$promise = $this->fetchLocal(self::TLS_KEY_PROMISE);
 		$promise->resolve($this->getResult());
 	}
 }

@@ -30,6 +30,22 @@ use pocketmine\Player;
 use pocketmine\scheduler\BulkCurlTask;
 use pocketmine\timings\TimingsHandler;
 use pocketmine\utils\InternetException;
+use function count;
+use function fclose;
+use function file_exists;
+use function fopen;
+use function fseek;
+use function http_build_query;
+use function is_array;
+use function json_decode;
+use function mkdir;
+use function stream_get_contents;
+use function strtolower;
+use const CURLOPT_AUTOREFERER;
+use const CURLOPT_FOLLOWLOCATION;
+use const CURLOPT_HTTPHEADER;
+use const CURLOPT_POST;
+use const CURLOPT_POSTFIELDS;
 
 class TimingsCommand extends VanillaCommand{
 
@@ -106,6 +122,8 @@ class TimingsCommand extends VanillaCommand{
 				$host = $sender->getServer()->getProperty("timings.host", "timings.pmmp.io");
 
 				$sender->getServer()->getAsyncPool()->submitTask(new class($sender, $host, $agent, $data) extends BulkCurlTask{
+					private const TLS_KEY_SENDER = "sender";
+
 					/** @var string */
 					private $host;
 
@@ -123,11 +141,12 @@ class TimingsCommand extends VanillaCommand{
 							]]
 						]);
 						$this->host = $host;
-						$this->storeLocal($sender);
+						$this->storeLocal(self::TLS_KEY_SENDER, $sender);
 					}
 
 					public function onCompletion() : void{
-						$sender = $this->fetchLocal();
+						/** @var CommandSender $sender */
+						$sender = $this->fetchLocal(self::TLS_KEY_SENDER);
 						if($sender instanceof Player and !$sender->isOnline()){ // TODO replace with a more generic API method for checking availability of CommandSender
 							return;
 						}

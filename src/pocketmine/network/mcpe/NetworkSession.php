@@ -23,37 +23,88 @@ declare(strict_types=1);
 
 namespace pocketmine\network\mcpe;
 
+use pocketmine\entity\effect\EffectInstance;
+use pocketmine\entity\Living;
 use pocketmine\event\player\PlayerCreationEvent;
 use pocketmine\event\server\DataPacketReceiveEvent;
 use pocketmine\event\server\DataPacketSendEvent;
+use pocketmine\form\Form;
+use pocketmine\GameMode;
+use pocketmine\inventory\Inventory;
+use pocketmine\math\Vector3;
+use pocketmine\network\BadPacketException;
 use pocketmine\network\mcpe\handler\DeathSessionHandler;
 use pocketmine\network\mcpe\handler\HandshakeSessionHandler;
+use pocketmine\network\mcpe\handler\InGameSessionHandler;
 use pocketmine\network\mcpe\handler\LoginSessionHandler;
+use pocketmine\network\mcpe\handler\NullSessionHandler;
 use pocketmine\network\mcpe\handler\PreSpawnSessionHandler;
 use pocketmine\network\mcpe\handler\ResourcePacksSessionHandler;
 use pocketmine\network\mcpe\handler\SessionHandler;
-use pocketmine\network\mcpe\handler\SimpleSessionHandler;
-use pocketmine\network\mcpe\protocol\DataPacket;
+use pocketmine\network\mcpe\protocol\AdventureSettingsPacket;
+use pocketmine\network\mcpe\protocol\AvailableCommandsPacket;
+use pocketmine\network\mcpe\protocol\ChunkRadiusUpdatedPacket;
+use pocketmine\network\mcpe\protocol\ClientboundPacket;
 use pocketmine\network\mcpe\protocol\DisconnectPacket;
-use pocketmine\network\mcpe\protocol\PacketPool;
+use pocketmine\network\mcpe\protocol\InventoryContentPacket;
+use pocketmine\network\mcpe\protocol\InventorySlotPacket;
+use pocketmine\network\mcpe\protocol\MobArmorEquipmentPacket;
+use pocketmine\network\mcpe\protocol\MobEffectPacket;
+use pocketmine\network\mcpe\protocol\ModalFormRequestPacket;
+use pocketmine\network\mcpe\protocol\MovePlayerPacket;
+use pocketmine\network\mcpe\protocol\NetworkChunkPublisherUpdatePacket;
+use pocketmine\network\mcpe\protocol\Packet;
 use pocketmine\network\mcpe\protocol\PlayStatusPacket;
+use pocketmine\network\mcpe\protocol\ServerboundPacket;
 use pocketmine\network\mcpe\protocol\ServerToClientHandshakePacket;
+use pocketmine\network\mcpe\protocol\SetPlayerGameTypePacket;
+use pocketmine\network\mcpe\protocol\SetSpawnPositionPacket;
+use pocketmine\network\mcpe\protocol\TextPacket;
+use pocketmine\network\mcpe\protocol\TransferPacket;
+use pocketmine\network\mcpe\protocol\types\CommandData;
+use pocketmine\network\mcpe\protocol\types\CommandEnum;
+use pocketmine\network\mcpe\protocol\types\CommandParameter;
+use pocketmine\network\mcpe\protocol\types\ContainerIds;
+use pocketmine\network\mcpe\protocol\types\PlayerPermissions;
+use pocketmine\network\mcpe\protocol\UpdateAttributesPacket;
 use pocketmine\network\NetworkInterface;
+use pocketmine\network\NetworkSessionManager;
 use pocketmine\Player;
+use pocketmine\PlayerInfo;
 use pocketmine\Server;
 use pocketmine\timings\Timings;
+use pocketmine\utils\BinaryDataException;
+use pocketmine\utils\Utils;
+use pocketmine\world\Position;
+use function bin2hex;
+use function count;
+use function get_class;
+use function in_array;
+use function json_encode;
+use function json_last_error_msg;
+use function strlen;
+use function strtolower;
+use function substr;
+use function time;
+use function ucfirst;
 
 class NetworkSession{
+	/** @var \PrefixedLogger */
+	private $logger;
 	/** @var Server */
 	private $server;
-	/** @var Player */
-	private $player;
+	/** @var Player|null */
+	private $player = null;
+	/** @var NetworkSessionManager */
+	private $manager;
 	/** @var NetworkInterface */
 	private $interface;
 	/** @var string */
 	private $ip;
 	/** @var int */
 	private $port;
+	/** @var PlayerInfo */
+	private $info;
 	/** @var int */
 	private $ping;
 
@@ -62,33 +113,48 @@ class NetworkSession{
 
 	/** @var bool */
 	private $connected = true;
+	/** @var bool */
+	private $disconnectGuard = false;
+	/** @var bool */
+	private $loggedIn = false;
+	/** @var bool */
+	private $authenticated = false;
 	/** @var int */
 	private $connectTime;
 
 	/** @var NetworkCipher */
 	private $cipher;
 
-	/** @var PacketStream|null */
+	/** @var PacketBatch|null */
 	private $sendBuffer;
 
 	/** @var \SplQueue|CompressBatchPromise[] */
 	private $compressedQueue;
 
-	public function __construct(Server $server, NetworkInterface $interface, string $ip, int $port){
+	public function __construct(Server $server, NetworkSessionManager $manager, NetworkInterface $interface, string $ip, int $port){
 		$this->server = $server;
+		$this->manager = $manager;
 		$this->interface = $interface;
 		$this->ip = $ip;
 		$this->port = $port;
 
+		$this->logger = new \PrefixedLogger($this->server->getLogger(), $this->getLogPrefix());
+
 		$this->compressedQueue = new \SplQueue();
 
 		$this->connectTime = time();
-		$this->server->getNetwork()->scheduleSessionTick($this);
 
-		//TODO: this should happen later in the login sequence
-		$this->createPlayer();
+		$this->setHandler(new LoginSessionHandler($this->server, $this));
 
-		$this->setHandler(new LoginSessionHandler($this->player, $this));
+		$this->manager->add($this);
+	}
+
+	private function getLogPrefix() : string{
+		return "NetworkSession: " . $this->getDisplayName();
+	}
+
+	public function getLogger() : \Logger{
+		return $this->logger;
 	}
 
 	protected function createPlayer() : void{
@@ -100,13 +166,29 @@ class NetworkSession{
 		 * @var Player $player
 		 * @see Player::__construct()
 		 */
-		$this->player = new $class($this->server, $this);
-
-		$this->server->addPlayer($this->player);
+		$this->player = new $class($this->server, $this, $this->info, $this->authenticated);
 	}
 
 	public function getPlayer() : ?Player{
 		return $this->player;
+	}
+
+	public function getPlayerInfo() : ?PlayerInfo{
+		return $this->info;
+	}
+
+	/**
+	 * TODO: this shouldn't be accessible after the initial login phase
+	 *
+	 * @param PlayerInfo $info
+	 * @throws \InvalidStateException
+	 */
+	public function setPlayerInfo(PlayerInfo $info) : void{
+		if($this->info !== null){
+			throw new \InvalidStateException("Player info has already been set");
+		}
+		$this->info = $info;
+		$this->logger->setPrefix($this->getLogPrefix());
 	}
 
 	public function isConnected() : bool{
@@ -129,6 +211,10 @@ class NetworkSession{
 	 */
 	public function getPort() : int{
 		return $this->port;
+	}
+
+	public function getDisplayName() : string{
+		return $this->info !== null ? $this->info->getUsername() : $this->ip . " " . $this->port;
 	}
 
 	/**
@@ -154,10 +240,17 @@ class NetworkSession{
 	}
 
 	public function setHandler(SessionHandler $handler) : void{
-		$this->handler = $handler;
-		$this->handler->setUp();
+		if($this->connected){ //TODO: this is fine since we can't handle anything from a disconnected session, but it might produce surprises in some cases
+			$this->handler = $handler;
+			$this->handler->setUp();
+		}
 	}
 
+	/**
+	 * @param string $payload
+	 *
+	 * @throws BadPacketException
+	 */
 	public function handleEncoded(string $payload) : void{
 		if(!$this->connected){
 			return;
@@ -167,10 +260,9 @@ class NetworkSession{
 			Timings::$playerNetworkReceiveDecryptTimer->startTiming();
 			try{
 				$payload = $this->cipher->decrypt($payload);
-			}catch(\InvalidArgumentException $e){
-				$this->server->getLogger()->debug("Encrypted packet from " . $this->ip . " " . $this->port . ": " . bin2hex($payload));
-				$this->disconnect("Packet decryption error: " . $e->getMessage());
-				return;
+			}catch(\UnexpectedValueException $e){
+				$this->logger->debug("Encrypted packet: " . bin2hex($payload));
+				throw new BadPacketException("Packet decryption error: " . $e->getMessage(), 0, $e);
 			}finally{
 				Timings::$playerNetworkReceiveDecryptTimer->stopTiming();
 			}
@@ -178,44 +270,76 @@ class NetworkSession{
 
 		Timings::$playerNetworkReceiveDecompressTimer->startTiming();
 		try{
-			$stream = new PacketStream(NetworkCompression::decompress($payload));
+			$stream = new PacketBatch(NetworkCompression::decompress($payload));
 		}catch(\ErrorException $e){
-			$this->server->getLogger()->debug("Failed to decompress packet from " . $this->ip . " " . $this->port . ": " . bin2hex($payload));
-			$this->disconnect("Compressed packet batch decode error (incompatible game version?)", false);
-			return;
+			$this->logger->debug("Failed to decompress packet: " . bin2hex($payload));
+			//TODO: this isn't incompatible game version if we already established protocol version
+			throw new BadPacketException("Compressed packet batch decode error (incompatible game version?)", 0, $e);
 		}finally{
 			Timings::$playerNetworkReceiveDecompressTimer->stopTiming();
 		}
 
+		$count = 0;
 		while(!$stream->feof() and $this->connected){
-			$this->handleDataPacket(PacketPool::getPacket($stream->getString()));
+			if($count++ >= 500){
+				throw new BadPacketException("Too many packets in a single batch");
+			}
+			try{
+				$pk = $stream->getPacket();
+			}catch(BinaryDataException $e){
+				$this->logger->debug("Packet batch: " . bin2hex($stream->getBuffer()));
+				throw new BadPacketException("Packet batch decode error: " . $e->getMessage(), 0, $e);
+			}
+
+			try{
+				$this->handleDataPacket($pk);
+			}catch(BadPacketException $e){
+				$this->logger->debug($pk->getName() . ": " . bin2hex($pk->getBuffer()));
+				throw new BadPacketException("Error processing " . $pk->getName() . ": " . $e->getMessage(), 0, $e);
+			}
 		}
 	}
 
-	public function handleDataPacket(DataPacket $packet) : void{
+	/**
+	 * @param Packet $packet
+	 *
+	 * @throws BadPacketException
+	 */
+	public function handleDataPacket(Packet $packet) : void{
+		if(!($packet instanceof ServerboundPacket)){
+			throw new BadPacketException("Unexpected non-serverbound packet");
+		}
+
 		$timings = Timings::getReceiveDataPacketTimings($packet);
 		$timings->startTiming();
 
-		$packet->decode();
-		if(!$packet->feof() and !$packet->mayHaveUnreadBytes()){
-			$remains = substr($packet->buffer, $packet->offset);
-			$this->server->getLogger()->debug("Still " . strlen($remains) . " bytes unread in " . $packet->getName() . ": 0x" . bin2hex($remains));
-		}
+		try{
+			$packet->decode();
+			if(!$packet->feof() and !$packet->mayHaveUnreadBytes()){
+				$remains = substr($packet->getBuffer(), $packet->getOffset());
+				$this->logger->debug("Still " . strlen($remains) . " bytes unread in " . $packet->getName() . ": " . bin2hex($remains));
+			}
 
-		$ev = new DataPacketReceiveEvent($this->player, $packet);
-		$ev->call();
-		if(!$ev->isCancelled() and !$packet->handle($this->handler)){
-			$this->server->getLogger()->debug("Unhandled " . $packet->getName() . " received from " . $this->player->getName() . ": 0x" . bin2hex($packet->buffer));
+			$ev = new DataPacketReceiveEvent($this, $packet);
+			$ev->call();
+			if(!$ev->isCancelled() and !$packet->handle($this->handler)){
+				$this->logger->debug("Unhandled " . $packet->getName() . ": " . bin2hex($packet->getBuffer()));
+			}
+		}finally{
+			$timings->stopTiming();
 		}
-
-		$timings->stopTiming();
 	}
 
-	public function sendDataPacket(DataPacket $packet, bool $immediate = false) : bool{
+	public function sendDataPacket(ClientboundPacket $packet, bool $immediate = false) : bool{
+		//Basic safety restriction. TODO: improve this
+		if(!$this->loggedIn and !$packet->canBeSentBeforeLogin()){
+			throw new \InvalidArgumentException("Attempted to send " . get_class($packet) . " to " . $this->getDisplayName() . " too early");
+		}
+
 		$timings = Timings::getSendDataPacketTimings($packet);
 		$timings->startTiming();
 		try{
-			$ev = new DataPacketSendEvent($this->player, $packet);
+			$ev = new DataPacketSendEvent($this, $packet);
 			$ev->call();
 			if($ev->isCancelled()){
 				return false;
@@ -234,17 +358,17 @@ class NetworkSession{
 
 	/**
 	 * @internal
-	 * @param DataPacket $packet
+	 * @param ClientboundPacket $packet
 	 */
-	public function addToSendBuffer(DataPacket $packet) : void{
+	public function addToSendBuffer(ClientboundPacket $packet) : void{
 		$timings = Timings::getSendDataPacketTimings($packet);
 		$timings->startTiming();
 		try{
 			if($this->sendBuffer === null){
-				$this->sendBuffer = new PacketStream();
+				$this->sendBuffer = new PacketBatch();
 			}
 			$this->sendBuffer->putPacket($packet);
-			$this->server->getNetwork()->scheduleSessionTick($this);
+			$this->manager->scheduleUpdate($this); //schedule flush at end of tick
 		}finally{
 			$timings->stopTiming();
 		}
@@ -296,6 +420,17 @@ class NetworkSession{
 		$this->interface->putPacket($this, $payload, $immediate);
 	}
 
+	private function tryDisconnect(\Closure $func) : void{
+		if($this->connected and !$this->disconnectGuard){
+			$this->disconnectGuard = true;
+			$func();
+			$this->disconnectGuard = false;
+			$this->setHandler(NullSessionHandler::getInstance());
+			$this->connected = false;
+			$this->manager->remove($this);
+		}
+	}
+
 	/**
 	 * Disconnects the session, destroying the associated player (if it exists).
 	 *
@@ -303,11 +438,35 @@ class NetworkSession{
 	 * @param bool   $notify
 	 */
 	public function disconnect(string $reason, bool $notify = true) : void{
-		if($this->connected){
-			$this->connected = false;
-			$this->player->close($this->player->getLeaveMessage(), $reason);
+		$this->tryDisconnect(function() use($reason, $notify){
+			if($this->player !== null){
+				$this->player->disconnect($reason, null, $notify);
+			}
 			$this->doServerDisconnect($reason, $notify);
-		}
+		});
+	}
+
+	/**
+	 * Instructs the remote client to connect to a different server.
+	 *
+	 * @param string $ip
+	 * @param int    $port
+	 * @param string $reason
+	 *
+	 * @throws \UnsupportedOperationException
+	 */
+	public function transfer(string $ip, int $port, string $reason = "transfer") : void{
+		$this->tryDisconnect(function() use($ip, $port, $reason){
+			$pk = new TransferPacket();
+			$pk->address = $ip;
+			$pk->port = $port;
+			$this->sendDataPacket($pk, true);
+			$this->disconnect($reason, false);
+			if($this->player !== null){
+				$this->player->disconnect($reason, null, false);
+			}
+			$this->doServerDisconnect($reason, false);
+		});
 	}
 
 	/**
@@ -317,10 +476,9 @@ class NetworkSession{
 	 * @param bool   $notify
 	 */
 	public function onPlayerDestroyed(string $reason, bool $notify = true) : void{
-		if($this->connected){
-			$this->connected = false;
+		$this->tryDisconnect(function() use($reason, $notify){
 			$this->doServerDisconnect($reason, $notify);
-		}
+		});
 	}
 
 	/**
@@ -338,7 +496,6 @@ class NetworkSession{
 		}
 
 		$this->interface->close($this, $notify ? $reason : "");
-		$this->disconnectCleanup();
 	}
 
 	/**
@@ -348,19 +505,39 @@ class NetworkSession{
 	 * @param string $reason
 	 */
 	public function onClientDisconnect(string $reason) : void{
-		if($this->connected){
-			$this->connected = false;
-			$this->player->close($this->player->getLeaveMessage(), $reason);
-			$this->disconnectCleanup();
-		}
+		$this->tryDisconnect(function() use($reason){
+			if($this->player !== null){
+				$this->player->disconnect($reason, null, false);
+			}
+		});
 	}
 
-	private function disconnectCleanup() : void{
-		$this->handler = null;
-		$this->interface = null;
-		$this->player = null;
-		$this->sendBuffer = null;
-		$this->compressedQueue = null;
+	public function setAuthenticationStatus(bool $authenticated, bool $authRequired, ?string $error) : bool{
+		if($authenticated and $this->info->getXuid() === ""){
+			$error = "Expected XUID but none found";
+		}
+
+		if($error !== null){
+			$this->disconnect($this->server->getLanguage()->translateString("pocketmine.disconnect.invalidSession", [$error]));
+
+			return false;
+		}
+
+		$this->authenticated = $authenticated;
+
+		if(!$this->authenticated){
+			if($authRequired){
+				$this->disconnect("disconnectionScreen.notAuthenticated");
+				return false;
+			}
+
+			if($this->info->getXuid() !== ""){
+				$this->logger->warning("Found XUID, but login keychain is not signed by Mojang");
+			}
+		}
+		$this->logger->debug("Xbox Live authenticated: " . ($this->authenticated ? "YES" : "NO"));
+
+		return $this->manager->kickDuplicates($this);
 	}
 
 	public function enableEncryption(string $encryptionKey, string $handshakeJwt) : void{
@@ -371,20 +548,21 @@ class NetworkSession{
 		$this->cipher = new NetworkCipher($encryptionKey);
 
 		$this->setHandler(new HandshakeSessionHandler($this));
-		$this->server->getLogger()->debug("Enabled encryption for $this->ip $this->port");
+		$this->logger->debug("Enabled encryption");
 	}
 
 	public function onLoginSuccess() : void{
+		$this->loggedIn = true;
+
 		$pk = new PlayStatusPacket();
 		$pk->status = PlayStatusPacket::LOGIN_SUCCESS;
 		$this->sendDataPacket($pk);
 
-		$this->player->onLoginSuccess();
-		$this->setHandler(new ResourcePacksSessionHandler($this->player, $this, $this->server->getResourcePackManager()));
+		$this->setHandler(new ResourcePacksSessionHandler($this, $this->server->getResourcePackManager()));
 	}
 
 	public function onResourcePacksDone() : void{
-		$this->player->_actuallyConstruct();
+		$this->createPlayer();
 
 		$this->setHandler(new PreSpawnSessionHandler($this->server, $this->player, $this));
 	}
@@ -396,7 +574,7 @@ class NetworkSession{
 	}
 
 	public function onSpawn() : void{
-		$this->setHandler(new SimpleSessionHandler($this->player));
+		$this->setHandler(new InGameSessionHandler($this->player, $this));
 	}
 
 	public function onDeath() : void{
@@ -404,7 +582,247 @@ class NetworkSession{
 	}
 
 	public function onRespawn() : void{
-		$this->setHandler(new SimpleSessionHandler($this->player));
+		$this->setHandler(new InGameSessionHandler($this->player, $this));
+	}
+
+	public function syncMovement(Vector3 $pos, ?float $yaw = null, ?float $pitch = null, int $mode = MovePlayerPacket::MODE_NORMAL) : void{
+		$yaw = $yaw ?? $this->player->getYaw();
+		$pitch = $pitch ?? $this->player->getPitch();
+
+		$pk = new MovePlayerPacket();
+		$pk->entityRuntimeId = $this->player->getId();
+		$pk->position = $this->player->getOffsetPosition($pos);
+		$pk->pitch = $pitch;
+		$pk->headYaw = $yaw;
+		$pk->yaw = $yaw;
+		$pk->mode = $mode;
+
+		$this->sendDataPacket($pk);
+	}
+
+	public function syncViewAreaRadius(int $distance) : void{
+		$pk = new ChunkRadiusUpdatedPacket();
+		$pk->radius = $distance;
+		$this->sendDataPacket($pk);
+	}
+
+	public function syncViewAreaCenterPoint(Vector3 $newPos, int $viewDistance) : void{
+		$pk = new NetworkChunkPublisherUpdatePacket();
+		$pk->x = $newPos->getFloorX();
+		$pk->y = $newPos->getFloorY();
+		$pk->z = $newPos->getFloorZ();
+		$pk->radius = $viewDistance * 16; //blocks, not chunks >.>
+		$this->sendDataPacket($pk);
+	}
+
+	public function syncPlayerSpawnPoint(Position $newSpawn) : void{
+		$pk = new SetSpawnPositionPacket();
+		$pk->x = $newSpawn->getFloorX();
+		$pk->y = $newSpawn->getFloorY();
+		$pk->z = $newSpawn->getFloorZ();
+		$pk->spawnType = SetSpawnPositionPacket::TYPE_PLAYER_SPAWN;
+		$pk->spawnForced = false;
+		$this->sendDataPacket($pk);
+	}
+
+	public function syncGameMode(GameMode $mode) : void{
+		$pk = new SetPlayerGameTypePacket();
+		$pk->gamemode = self::getClientFriendlyGamemode($mode);
+		$this->sendDataPacket($pk);
+	}
+
+	/**
+	 * TODO: make this less specialized
+	 *
+	 * @param Player $for
+	 */
+	public function syncAdventureSettings(Player $for) : void{
+		$pk = new AdventureSettingsPacket();
+
+		$pk->setFlag(AdventureSettingsPacket::WORLD_IMMUTABLE, $for->isSpectator());
+		$pk->setFlag(AdventureSettingsPacket::NO_PVP, $for->isSpectator());
+		$pk->setFlag(AdventureSettingsPacket::AUTO_JUMP, $for->hasAutoJump());
+		$pk->setFlag(AdventureSettingsPacket::ALLOW_FLIGHT, $for->getAllowFlight());
+		$pk->setFlag(AdventureSettingsPacket::NO_CLIP, $for->isSpectator());
+		$pk->setFlag(AdventureSettingsPacket::FLYING, $for->isFlying());
+
+		//TODO: permission flags
+
+		$pk->commandPermission = ($for->isOp() ? AdventureSettingsPacket::PERMISSION_OPERATOR : AdventureSettingsPacket::PERMISSION_NORMAL);
+		$pk->playerPermission = ($for->isOp() ? PlayerPermissions::OPERATOR : PlayerPermissions::MEMBER);
+		$pk->entityUniqueId = $for->getId();
+
+		$this->sendDataPacket($pk);
+	}
+
+	public function syncAttributes(Living $entity, bool $sendAll = false){
+		$entries = $sendAll ? $entity->getAttributeMap()->getAll() : $entity->getAttributeMap()->needSend();
+		if(count($entries) > 0){
+			$pk = new UpdateAttributesPacket();
+			$pk->entityRuntimeId = $entity->getId();
+			$pk->entries = $entries;
+			$this->sendDataPacket($pk);
+			foreach($entries as $entry){
+				$entry->markSynchronized();
+			}
+		}
+	}
+
+	public function onEntityEffectAdded(Living $entity, EffectInstance $effect, bool $replacesOldEffect) : void{
+		$pk = new MobEffectPacket();
+		$pk->entityRuntimeId = $entity->getId();
+		$pk->eventId = $replacesOldEffect ? MobEffectPacket::EVENT_MODIFY : MobEffectPacket::EVENT_ADD;
+		$pk->effectId = $effect->getId();
+		$pk->amplifier = $effect->getAmplifier();
+		$pk->particles = $effect->isVisible();
+		$pk->duration = $effect->getDuration();
+
+		$this->sendDataPacket($pk);
+	}
+
+	public function onEntityEffectRemoved(Living $entity, EffectInstance $effect) : void{
+		$pk = new MobEffectPacket();
+		$pk->entityRuntimeId = $entity->getId();
+		$pk->eventId = MobEffectPacket::EVENT_REMOVE;
+		$pk->effectId = $effect->getId();
+
+		$this->sendDataPacket($pk);
+	}
+
+	public function syncAvailableCommands() : void{
+		$pk = new AvailableCommandsPacket();
+		foreach($this->server->getCommandMap()->getCommands() as $name => $command){
+			if(isset($pk->commandData[$command->getName()]) or $command->getName() === "help" or !$command->testPermissionSilent($this->player)){
+				continue;
+			}
+
+			$data = new CommandData();
+			//TODO: commands containing uppercase letters in the name crash 1.9.0 client
+			$data->commandName = strtolower($command->getName());
+			$data->commandDescription = $this->server->getLanguage()->translateString($command->getDescription());
+			$data->flags = 0;
+			$data->permission = 0;
+
+			$parameter = new CommandParameter();
+			$parameter->paramName = "args";
+			$parameter->paramType = AvailableCommandsPacket::ARG_FLAG_VALID | AvailableCommandsPacket::ARG_TYPE_RAWTEXT;
+			$parameter->isOptional = true;
+			$data->overloads[0][0] = $parameter;
+
+			$aliases = $command->getAliases();
+			if(!empty($aliases)){
+				if(!in_array($data->commandName, $aliases, true)){
+					//work around a client bug which makes the original name not show when aliases are used
+					$aliases[] = $data->commandName;
+				}
+				$data->aliases = new CommandEnum();
+				$data->aliases->enumName = ucfirst($command->getName()) . "Aliases";
+				$data->aliases->enumValues = $aliases;
+			}
+
+			$pk->commandData[$command->getName()] = $data;
+		}
+
+		$this->sendDataPacket($pk);
+	}
+
+	public function onRawChatMessage(string $message) : void{
+		$pk = new TextPacket();
+		$pk->type = TextPacket::TYPE_RAW;
+		$pk->message = $message;
+		$this->sendDataPacket($pk);
+	}
+
+	public function onTranslatedChatMessage(string $key, array $parameters) : void{
+		$pk = new TextPacket();
+		$pk->type = TextPacket::TYPE_TRANSLATION;
+		$pk->needsTranslation = true;
+		$pk->message = $key;
+		$pk->parameters = $parameters;
+		$this->sendDataPacket($pk);
+	}
+
+	public function onPopup(string $message) : void{
+		$pk = new TextPacket();
+		$pk->type = TextPacket::TYPE_POPUP;
+		$pk->message = $message;
+		$this->sendDataPacket($pk);
+	}
+
+	public function onTip(string $message) : void{
+		$pk = new TextPacket();
+		$pk->type = TextPacket::TYPE_TIP;
+		$pk->message = $message;
+		$this->sendDataPacket($pk);
+	}
+
+	public function onFormSent(int $id, Form $form) : bool{
+		$pk = new ModalFormRequestPacket();
+		$pk->formId = $id;
+		$pk->formData = json_encode($form);
+		if($pk->formData === false){
+			throw new \InvalidArgumentException("Failed to encode form JSON: " . json_last_error_msg());
+		}
+		return $this->sendDataPacket($pk);
+	}
+
+	/**
+	 * Instructs the networksession to start using the chunk at the given coordinates. This may occur asynchronously.
+	 * @param int      $chunkX
+	 * @param int      $chunkZ
+	 * @param \Closure $onCompletion To be called when chunk sending has completed.
+	 */
+	public function startUsingChunk(int $chunkX, int $chunkZ, \Closure $onCompletion) : void{
+		Utils::validateCallableSignature(function(int $chunkX, int $chunkZ){}, $onCompletion);
+
+		ChunkCache::getInstance($this->player->getWorld())->request($chunkX, $chunkZ)->onResolve(
+
+			//this callback may be called synchronously or asynchronously, depending on whether the promise is resolved yet
+			function(CompressBatchPromise $promise) use($chunkX, $chunkZ, $onCompletion){
+				if(!$this->isConnected()){
+					return;
+				}
+				$this->player->world->timings->syncChunkSendTimer->startTiming();
+				try{
+					$this->queueCompressed($promise);
+					$onCompletion($chunkX, $chunkZ);
+				}finally{
+					$this->player->world->timings->syncChunkSendTimer->stopTiming();
+				}
+			}
+		);
+	}
+
+	public function stopUsingChunk(int $chunkX, int $chunkZ) : void{
+
+	}
+
+	public function syncInventorySlot(Inventory $inventory, int $slot) : void{
+		$windowId = $this->player->getWindowId($inventory);
+		if($windowId !== ContainerIds::NONE){
+			$pk = new InventorySlotPacket();
+			$pk->inventorySlot = $slot;
+			$pk->item = $inventory->getItem($slot);
+			$pk->windowId = $windowId;
+			$this->sendDataPacket($pk);
+		}
+	}
+
+	public function syncInventoryContents(Inventory $inventory) : void{
+		$windowId = $this->player->getWindowId($inventory);
+		if($windowId !== ContainerIds::NONE){
+			$pk = new InventoryContentPacket();
+			$pk->items = $inventory->getContents(true);
+			$pk->windowId = $windowId;
+			$this->sendDataPacket($pk);
+		}
+	}
+
+	public function onMobArmorChange(Living $mob) : void{
+		$pk = new MobArmorEquipmentPacket();
+		$pk->entityRuntimeId = $mob->getId();
+		$pk->slots = $mob->getArmorInventory()->getContents(true); //beware this order might change in the future
+		$this->sendDataPacket($pk);
 	}
 
 	public function tick() : bool{
@@ -422,5 +840,22 @@ class NetworkSession{
 		}
 
 		return false;
+	}
+
+	/**
+	 * Returns a client-friendly gamemode of the specified real gamemode
+	 * This function takes care of handling gamemodes known to MCPE (as of 1.1.0.3, that includes Survival, Creative and Adventure)
+	 *
+	 * @internal
+	 * @param GameMode $gamemode
+	 *
+	 * @return int
+	 */
+	public static function getClientFriendlyGamemode(GameMode $gamemode) : int{
+		if($gamemode === GameMode::SPECTATOR()){
+			return GameMode::CREATIVE()->getMagicNumber();
+		}
+
+		return $gamemode->getMagicNumber();
 	}
 }

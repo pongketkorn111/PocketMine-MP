@@ -23,7 +23,7 @@ declare(strict_types=1);
 
 namespace pocketmine\inventory;
 
-use pocketmine\level\Position;
+use pocketmine\world\Position;
 use pocketmine\network\mcpe\protocol\types\WindowTypes;
 use pocketmine\Player;
 
@@ -33,19 +33,11 @@ class AnvilInventory extends ContainerInventory{
 	protected $holder;
 
 	public function __construct(Position $pos){
-		parent::__construct($pos->asPosition());
+		parent::__construct($pos->asPosition(), 2);
 	}
 
 	public function getNetworkType() : int{
 		return WindowTypes::ANVIL;
-	}
-
-	public function getName() : string{
-		return "Anvil";
-	}
-
-	public function getDefaultSize() : int{
-		return 2; //1 input, 1 material
 	}
 
 	/**
@@ -56,9 +48,12 @@ class AnvilInventory extends ContainerInventory{
 		return $this->holder;
 	}
 
-	public function onClose(Player $who) : void{
+	protected function onClose(Player $who) : void{
 		parent::onClose($who);
 
-		$this->dropContents($this->holder->getLevel(), $this->holder->add(0.5, 0.5, 0.5));
+		foreach($this->getContents() as $item){
+			$who->dropItem($item);
+		}
+		$this->clearAll();
 	}
 }

@@ -27,25 +27,7 @@ use pocketmine\item\TieredTool;
 
 class EndStone extends Solid{
 
-	protected $id = self::END_STONE;
-
-	public function __construct(){
-
-	}
-
-	public function getName() : string{
-		return "End Stone";
-	}
-
-	public function getToolType() : int{
-		return BlockToolType::TYPE_PICKAXE;
-	}
-
-	public function getToolHarvestLevel() : int{
-		return TieredTool::TIER_WOODEN;
-	}
-
-	public function getHardness() : float{
-		return 3;
+	public function __construct(BlockIdentifier $idInfo, string $name, ?BlockBreakInfo $breakInfo = null){
+		parent::__construct($idInfo, $name, $breakInfo ?? new BlockBreakInfo(3.0, BlockToolType::TYPE_PICKAXE, TieredTool::TIER_WOODEN, 45.0));
 	}
 }

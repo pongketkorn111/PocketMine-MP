@@ -24,6 +24,18 @@ declare(strict_types=1);
 namespace pocketmine\plugin;
 
 use pocketmine\permission\Permission;
+use pocketmine\permission\PermissionParser;
+use function array_map;
+use function array_values;
+use function extension_loaded;
+use function is_array;
+use function phpversion;
+use function preg_match;
+use function str_replace;
+use function stripos;
+use function strlen;
+use function substr;
+use function version_compare;
 
 class PluginDescription{
 	private $map;
@@ -48,7 +60,8 @@ class PluginDescription{
 	private $website = "";
 	/** @var string */
 	private $prefix = "";
-	private $order = PluginLoadOrder::POSTWORLD;
+	/** @var PluginLoadOrder */
+	private $order;
 
 	/**
 	 * @var Permission[]
@@ -67,7 +80,7 @@ class PluginDescription{
 	 *
 	 * @throws PluginException
 	 */
-	private function loadMap(array $plugin){
+	private function loadMap(array $plugin) : void{
 		$this->map = $plugin;
 
 		$this->name = $plugin["name"];
@@ -81,8 +94,8 @@ class PluginDescription{
 			throw new PluginException("Invalid PluginDescription main, cannot start within the PocketMine namespace");
 		}
 
-		$this->api = array_map("strval", (array) ($plugin["api"] ?? []));
-		$this->compatibleMcpeProtocols = array_map("intval", (array) ($plugin["mcpe-protocol"] ?? []));
+		$this->api = array_map("\strval", (array) ($plugin["api"] ?? []));
+		$this->compatibleMcpeProtocols = array_map("\intval", (array) ($plugin["mcpe-protocol"] ?? []));
 
 		if(isset($plugin["commands"]) and is_array($plugin["commands"])){
 			$this->commands = $plugin["commands"];
@@ -114,13 +127,15 @@ class PluginDescription{
 		$this->prefix = (string) ($plugin["prefix"] ?? $this->prefix);
 
 		if(isset($plugin["load"])){
-			$order = strtoupper($plugin["load"]);
-			if(!defined(PluginLoadOrder::class . "::" . $order)){
-				throw new PluginException("Invalid PluginDescription load");
-			}else{
-				$this->order = constant(PluginLoadOrder::class . "::" . $order);
+			try{
+				$this->order = PluginLoadOrder::fromString($plugin["load"]);
+			}catch(\InvalidArgumentException $e){
+				throw new PluginException("Invalid PluginDescription \"load\"");
 			}
+		}else{
+			$this->order = PluginLoadOrder::POSTWORLD();
 		}
+
 		$this->authors = [];
 		if(isset($plugin["author"])){
 			$this->authors[] = $plugin["author"];
@@ -132,7 +147,7 @@ class PluginDescription{
 		}
 
 		if(isset($plugin["permissions"])){
-			$this->permissions = Permission::loadPermissions($plugin["permissions"]);
+			$this->permissions = PermissionParser::loadPermissions($plugin["permissions"]);
 		}
 	}
 
@@ -190,7 +205,7 @@ class PluginDescription{
 	 *
 	 * @throws PluginException if there are required extensions missing or have incompatible version, or if the version constraint cannot be parsed
 	 */
-	public function checkRequiredExtensions(){
+	public function checkRequiredExtensions() : void{
 		foreach($this->extensions as $name => $versionConstrs){
 			if(!extension_loaded($name)){
 				throw new PluginException("Required extension $name not loaded");
@@ -258,9 +273,9 @@ class PluginDescription{
 	}
 
 	/**
-	 * @return int
+	 * @return PluginLoadOrder
 	 */
-	public function getOrder() : int{
+	public function getOrder() : PluginLoadOrder{
 		return $this->order;
 	}
 

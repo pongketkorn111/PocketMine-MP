@@ -29,7 +29,7 @@ namespace pocketmine\network\mcpe\protocol;
 
 use pocketmine\network\mcpe\handler\SessionHandler;
 
-class SetTitlePacket extends DataPacket{
+class SetTitlePacket extends DataPacket implements ClientboundPacket{
 	public const NETWORK_ID = ProtocolInfo::SET_TITLE_PACKET;
 
 	public const TYPE_CLEAR_TITLE = 0;
@@ -68,5 +68,45 @@ class SetTitlePacket extends DataPacket{
 
 	public function handle(SessionHandler $handler) : bool{
 		return $handler->handleSetTitle($this);
+	}
+
+	private static function type(int $type) : self{
+		$result = new self;
+		$result->type = $type;
+		return $result;
+	}
+
+	private static function text(int $type, string $text) : self{
+		$result = self::type($type);
+		$result->text = $text;
+		return $result;
+	}
+
+	public static function title(string $text) : self{
+		return self::text(self::TYPE_SET_TITLE, $text);
+	}
+
+	public static function subtitle(string $text) : self{
+		return self::text(self::TYPE_SET_SUBTITLE, $text);
+	}
+
+	public static function actionBarMessage(string $text) : self{
+		return self::text(self::TYPE_SET_ACTIONBAR_MESSAGE, $text);
+	}
+
+	public static function clearTitle() : self{
+		return self::type(self::TYPE_CLEAR_TITLE);
+	}
+
+	public static function resetTitleOptions() : self{
+		return self::type(self::TYPE_RESET_TITLE);
+	}
+
+	public static function setAnimationTimes(int $fadeIn, int $stay, int $fadeOut) : self{
+		$result = self::type(self::TYPE_SET_ANIMATION_TIMES);
+		$result->fadeInTime = $fadeIn;
+		$result->stayTime = $stay;
+		$result->fadeOutTime = $fadeOut;
+		return $result;
 	}
 }

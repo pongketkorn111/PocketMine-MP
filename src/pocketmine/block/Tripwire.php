@@ -23,46 +23,37 @@ declare(strict_types=1);
 
 namespace pocketmine\block;
 
-use pocketmine\item\Item;
-use pocketmine\item\ItemFactory;
-
 class Tripwire extends Flowable{
-
-	protected $id = self::TRIPWIRE;
 
 	/** @var bool */
 	protected $triggered = false;
+	/** @var bool */
+	protected $suspended = false; //unclear usage, makes hitbox bigger if set
 	/** @var bool */
 	protected $connected = false;
 	/** @var bool */
 	protected $disarmed = false;
 
-	public function __construct(){
-
+	public function __construct(BlockIdentifier $idInfo, string $name, ?BlockBreakInfo $breakInfo = null){
+		parent::__construct($idInfo, $name, $breakInfo ?? BlockBreakInfo::instant());
 	}
 
 	protected function writeStateToMeta() : int{
-		return ($this->triggered ? 0x01 : 0) | ($this->connected ? 0x04 : 0) | ($this->disarmed ? 0x08 : 0);
+		return ($this->triggered ? BlockLegacyMetadata::TRIPWIRE_FLAG_TRIGGERED : 0) |
+			($this->suspended ? BlockLegacyMetadata::TRIPWIRE_FLAG_SUSPENDED : 0) |
+			($this->connected ? BlockLegacyMetadata::TRIPWIRE_FLAG_CONNECTED : 0) |
+			($this->disarmed ? BlockLegacyMetadata::TRIPWIRE_FLAG_DISARMED : 0);
 	}
 
-	public function readStateFromMeta(int $meta) : void{
-		$this->triggered = ($meta & 0x01) !== 0;
-		$this->connected = ($meta & 0x04) !== 0;
-		$this->disarmed = ($meta & 0x08) !== 0;
+	public function readStateFromData(int $id, int $stateMeta) : void{
+		$this->triggered = ($stateMeta & BlockLegacyMetadata::TRIPWIRE_FLAG_TRIGGERED) !== 0;
+		$this->suspended = ($stateMeta & BlockLegacyMetadata::TRIPWIRE_FLAG_SUSPENDED) !== 0;
+		$this->connected = ($stateMeta & BlockLegacyMetadata::TRIPWIRE_FLAG_CONNECTED) !== 0;
+		$this->disarmed = ($stateMeta & BlockLegacyMetadata::TRIPWIRE_FLAG_DISARMED) !== 0;
 	}
 
 	public function getStateBitmask() : int{
 		return 0b1111;
-	}
-
-	public function getName() : string{
-		return "Tripwire";
-	}
-
-	public function getDropsForCompatibleTool(Item $item) : array{
-		return [
-			ItemFactory::get(Item::STRING)
-		];
 	}
 
 	public function isAffectedBySilkTouch() : bool{

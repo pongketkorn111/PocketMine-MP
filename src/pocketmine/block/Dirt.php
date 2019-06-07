@@ -25,24 +25,20 @@ namespace pocketmine\block;
 
 use pocketmine\item\Hoe;
 use pocketmine\item\Item;
+use pocketmine\math\Facing;
+use pocketmine\math\Vector3;
 use pocketmine\Player;
 
 class Dirt extends Solid{
-	public const NORMAL = 0;
-	public const COARSE = 1;
 
-	public function getHardness() : float{
-		return 0.5;
+	public function __construct(BlockIdentifier $idInfo, string $name, ?BlockBreakInfo $breakInfo = null){
+		parent::__construct($idInfo, $name, $breakInfo ?? new BlockBreakInfo(0.5, BlockToolType::TYPE_SHOVEL));
 	}
 
-	public function getToolType() : int{
-		return BlockToolType::TYPE_SHOVEL;
-	}
-
-	public function onActivate(Item $item, Player $player = null) : bool{
-		if($item instanceof Hoe){
+	public function onInteract(Item $item, int $face, Vector3 $clickVector, ?Player $player = null) : bool{
+		if($face === Facing::UP and $item instanceof Hoe){
 			$item->applyDamage(1);
-			$this->getLevel()->setBlock($this, BlockFactory::get(Block::FARMLAND));
+			$this->getWorld()->setBlock($this, BlockFactory::get(BlockLegacyIds::FARMLAND));
 
 			return true;
 		}

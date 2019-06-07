@@ -24,12 +24,17 @@ declare(strict_types=1);
 namespace pocketmine\inventory;
 
 use pocketmine\item\Item;
-use pocketmine\item\ItemFactory;
 use pocketmine\network\mcpe\CompressBatchPromise;
 use pocketmine\network\mcpe\NetworkCompression;
-use pocketmine\network\mcpe\PacketStream;
+use pocketmine\network\mcpe\PacketBatch;
 use pocketmine\network\mcpe\protocol\CraftingDataPacket;
 use pocketmine\timings\Timings;
+use function array_map;
+use function file_get_contents;
+use function json_decode;
+use function json_encode;
+use function usort;
+use const DIRECTORY_SEPARATOR;
 
 class CraftingManager{
 	/** @var ShapedRecipe[][] */
@@ -51,24 +56,33 @@ class CraftingManager{
 
 		foreach($recipes as $recipe){
 			switch($recipe["type"]){
-				case 0:
-					$this->registerRecipe(new ShapelessRecipe(
+				case "shapeless":
+					if($recipe["block"] !== "crafting_table"){ //TODO: filter others out for now to avoid breaking economics
+						break;
+					}
+					$this->registerShapelessRecipe(new ShapelessRecipe(
 						array_map(function(array $data) : Item{ return Item::jsonDeserialize($data); }, $recipe["input"]),
 						array_map(function(array $data) : Item{ return Item::jsonDeserialize($data); }, $recipe["output"])
 					));
 					break;
-				case 1:
-					$this->registerRecipe(new ShapedRecipe(
+				case "shaped":
+					if($recipe["block"] !== "crafting_table"){ //TODO: filter others out for now to avoid breaking economics
+						break;
+					}
+					$this->registerShapedRecipe(new ShapedRecipe(
 						$recipe["shape"],
 						array_map(function(array $data) : Item{ return Item::jsonDeserialize($data); }, $recipe["input"]),
 						array_map(function(array $data) : Item{ return Item::jsonDeserialize($data); }, $recipe["output"])
 					));
 					break;
-				case 2:
-				case 3:
-					$result = $recipe["output"];
-					$resultItem = Item::jsonDeserialize($result);
-					$this->registerRecipe(new FurnaceRecipe($resultItem, ItemFactory::get($recipe["inputId"], $recipe["inputDamage"] ?? -1, 1)));
+				case "smelting":
+					if($recipe["block"] !== "furnace"){ //TODO: filter others out for now to avoid breaking economics
+						break;
+					}
+					$this->registerFurnaceRecipe(new FurnaceRecipe(
+						Item::jsonDeserialize($recipe["output"]),
+						Item::jsonDeserialize($recipe["input"]))
+					);
 					break;
 				default:
 					break;
@@ -101,11 +115,8 @@ class CraftingManager{
 			$pk->addFurnaceRecipe($recipe);
 		}
 
-		$batch = new PacketStream();
-		$batch->putPacket($pk);
-
 		$this->craftingDataCache = new CompressBatchPromise();
-		$this->craftingDataCache->resolve(NetworkCompression::compress($batch->buffer));
+		$this->craftingDataCache->resolve(NetworkCompression::compress(PacketBatch::fromPackets($pk)->getBuffer()));
 
 		Timings::$craftingDataCacheRebuildTimer->stopTiming();
 	}
@@ -131,9 +142,9 @@ class CraftingManager{
 	 *
 	 * @return int
 	 */
-	public static function sort(Item $i1, Item $i2){
+	public static function sort(Item $i1, Item $i2) : int{
 		//Use spaceship operator to compare each property, then try the next one if they are equivalent.
-		($retval = $i1->getId() <=> $i2->getId()) === 0 && ($retval = $i1->getDamage() <=> $i2->getDamage()) === 0 && ($retval = $i1->getCount() <=> $i2->getCount());
+		($retval = $i1->getId() <=> $i2->getId()) === 0 && ($retval = $i1->getMeta() <=> $i2->getMeta()) === 0 && ($retval = $i1->getCount() <=> $i2->getCount());
 
 		return $retval;
 	}
@@ -217,7 +228,7 @@ class CraftingManager{
 	 */
 	public function registerFurnaceRecipe(FurnaceRecipe $recipe) : void{
 		$input = $recipe->getInput();
-		$this->furnaceRecipes[$input->getId() . ":" . ($input->hasAnyDamageValue() ? "?" : $input->getDamage())] = $recipe;
+		$this->furnaceRecipes[$input->getId() . ":" . ($input->hasAnyDamageValue() ? "?" : $input->getMeta())] = $recipe;
 		$this->craftingDataCache = null;
 	}
 
@@ -280,13 +291,6 @@ class CraftingManager{
 	 * @return FurnaceRecipe|null
 	 */
 	public function matchFurnaceRecipe(Item $input) : ?FurnaceRecipe{
-		return $this->furnaceRecipes[$input->getId() . ":" . $input->getDamage()] ?? $this->furnaceRecipes[$input->getId() . ":?"] ?? null;
-	}
-
-	/**
-	 * @param Recipe $recipe
-	 */
-	public function registerRecipe(Recipe $recipe) : void{
-		$recipe->registerToCraftingManager($this);
+		return $this->furnaceRecipes[$input->getId() . ":" . $input->getMeta()] ?? $this->furnaceRecipes[$input->getId() . ":?"] ?? null;
 	}
 }

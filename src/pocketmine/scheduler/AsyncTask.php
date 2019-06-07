@@ -23,7 +23,10 @@ declare(strict_types=1);
 
 namespace pocketmine\scheduler;
 
-use pocketmine\Collectable;
+use function is_scalar;
+use function serialize;
+use function spl_object_id;
+use function unserialize;
 
 /**
  * Class used to run async tasks in other threads.
@@ -42,7 +45,7 @@ use pocketmine\Collectable;
  *
  * WARNING: Do not call PocketMine-MP API methods from other Threads!!
  */
-abstract class AsyncTask extends Collectable{
+abstract class AsyncTask extends \Threaded{
 	/**
 	 * @var \ArrayObject|mixed[] object hash => mixed data
 	 *
@@ -63,6 +66,8 @@ abstract class AsyncTask extends Collectable{
 	private $submitted = false;
 
 	private $crashed = false;
+	/** @var bool */
+	private $finished = false;
 
 	public function run() : void{
 		$this->result = null;
@@ -76,11 +81,21 @@ abstract class AsyncTask extends Collectable{
 			}
 		}
 
-		$this->setGarbage();
+		$this->finished = true;
 	}
 
 	public function isCrashed() : bool{
 		return $this->crashed or $this->isTerminated();
+	}
+
+	/**
+	 * Returns whether this task has finished executing, whether successfully or not. This differs from isRunning()
+	 * because it is not true prior to task execution.
+	 *
+	 * @return bool
+	 */
+	public function isFinished() : bool{
+		return $this->finished or $this->isCrashed();
 	}
 
 	/**
@@ -107,11 +122,9 @@ abstract class AsyncTask extends Collectable{
 
 	/**
 	 * @param mixed $result
-	 * @param bool  $serialize
 	 */
-	public function setResult($result, bool $serialize = true) : void{
-		$this->result = $serialize ? serialize($result) : $result;
-		$this->serialized = $serialize;
+	public function setResult($result) : void{
+		$this->result = ($this->serialized = !is_scalar($result)) ? serialize($result) : $result;
 	}
 
 	public function setSubmitted() : void{
@@ -123,45 +136,6 @@ abstract class AsyncTask extends Collectable{
 	 */
 	public function isSubmitted() : bool{
 		return $this->submitted;
-	}
-
-	/**
-	 * @see AsyncWorker::getFromThreadStore()
-	 *
-	 * @param string $identifier
-	 *
-	 * @return mixed
-	 */
-	public function getFromThreadStore(string $identifier){
-		if($this->worker === null or $this->isGarbage()){
-			throw new \BadMethodCallException("Objects stored in AsyncWorker thread-local storage can only be retrieved during task execution");
-		}
-		return $this->worker->getFromThreadStore($identifier);
-	}
-
-	/**
-	 * @see AsyncWorker::saveToThreadStore()
-	 *
-	 * @param string $identifier
-	 * @param mixed  $value
-	 */
-	public function saveToThreadStore(string $identifier, $value) : void{
-		if($this->worker === null or $this->isGarbage()){
-			throw new \BadMethodCallException("Objects can only be added to AsyncWorker thread-local storage during task execution");
-		}
-		$this->worker->saveToThreadStore($identifier, $value);
-	}
-
-	/**
-	 * @see AsyncWorker::removeFromThreadStore()
-	 *
-	 * @param string $identifier
-	 */
-	public function removeFromThreadStore(string $identifier) : void{
-		if($this->worker === null or $this->isGarbage()){
-			throw new \BadMethodCallException("Objects can only be removed from AsyncWorker thread-local storage during task execution");
-		}
-		$this->worker->removeFromThreadStore($identifier);
 	}
 
 	/**
@@ -183,7 +157,7 @@ abstract class AsyncTask extends Collectable{
 	 *
 	 * @param mixed $progress A value that can be safely serialize()'ed.
 	 */
-	public function publishProgress($progress){
+	public function publishProgress($progress) : void{
 		$this->progressUpdates[] = serialize($progress);
 	}
 
@@ -210,6 +184,14 @@ abstract class AsyncTask extends Collectable{
 	}
 
 	/**
+	 * Called from the main thread when the async task experiences an error during onRun(). Use this for things like
+	 * promise rejection.
+	 */
+	public function onError() : void{
+
+	}
+
+	/**
 	 * Saves mixed data in thread-local storage. Data stored using this storage is **only accessible from the thread it
 	 * was stored on**. Data stored using this method will **not** be serialized.
 	 * This can be used to store references to variables which you need later on on the same thread, but not others.
@@ -228,12 +210,13 @@ abstract class AsyncTask extends Collectable{
 	 * leak. Usually this does not cause memory failure, but be aware that the object may be no longer usable when the
 	 * AsyncTask completes. Since a strong reference is retained, the objects still exist, but the implementation is
 	 * responsible for checking whether these objects are still usable.
-	 * (E.g. a {@link \pocketmine\Level} object is no longer usable because it is unloaded while the AsyncTask is
+	 * (E.g. a {@link \pocketmine\World} object is no longer usable because it is unloaded while the AsyncTask is
 	 * executing, or even a plugin might be unloaded).
 	 *
-	 * @param mixed $complexData the data to store
+	 * @param string $key
+	 * @param mixed  $complexData the data to store
 	 */
-	protected function storeLocal($complexData) : void{
+	protected function storeLocal(string $key, $complexData) : void{
 		if(self::$threadLocalStorage === null){
 			/*
 			 * It's necessary to use an object (not array) here because pthreads is stupid. Non-default array statics
@@ -243,7 +226,7 @@ abstract class AsyncTask extends Collectable{
 			 */
 			self::$threadLocalStorage = new \ArrayObject();
 		}
-		self::$threadLocalStorage[spl_object_hash($this)] = $complexData;
+		self::$threadLocalStorage[spl_object_id($this)][$key] = $complexData;
 	}
 
 	/**
@@ -252,21 +235,24 @@ abstract class AsyncTask extends Collectable{
 	 * If you used storeLocal(), you can use this on the same thread to fetch data stored. This should be used during
 	 * onProgressUpdate() and onCompletion() to fetch thread-local data stored on the parent thread.
 	 *
+	 * @param string $key
+	 *
 	 * @return mixed
 	 *
 	 * @throws \InvalidArgumentException if no data were stored by this AsyncTask instance.
 	 */
-	protected function fetchLocal(){
-		if(self::$threadLocalStorage === null or !isset(self::$threadLocalStorage[spl_object_hash($this)])){
+	protected function fetchLocal(string $key){
+		$id = spl_object_id($this);
+		if(self::$threadLocalStorage === null or !isset(self::$threadLocalStorage[$id][$key])){
 			throw new \InvalidArgumentException("No matching thread-local data found on this thread");
 		}
 
-		return self::$threadLocalStorage[spl_object_hash($this)];
+		return self::$threadLocalStorage[$id][$key];
 	}
 
 	final public function __destruct(){
 		$this->reallyDestruct();
-		if(self::$threadLocalStorage !== null and isset(self::$threadLocalStorage[$h = spl_object_hash($this)])){
+		if(self::$threadLocalStorage !== null and isset(self::$threadLocalStorage[$h = spl_object_id($this)])){
 			unset(self::$threadLocalStorage[$h]);
 			if(self::$threadLocalStorage->count() === 0){
 				self::$threadLocalStorage = null;

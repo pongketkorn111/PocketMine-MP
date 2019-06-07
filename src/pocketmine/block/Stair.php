@@ -23,53 +23,71 @@ declare(strict_types=1);
 
 namespace pocketmine\block;
 
+use pocketmine\block\utils\BlockDataValidator;
 use pocketmine\item\Item;
 use pocketmine\math\AxisAlignedBB;
-use pocketmine\math\Bearing;
 use pocketmine\math\Facing;
 use pocketmine\math\Vector3;
 use pocketmine\Player;
 
 abstract class Stair extends Transparent{
+	private const SHAPE_STRAIGHT = "straight";
+	private const SHAPE_INNER_LEFT = "inner_left";
+	private const SHAPE_INNER_RIGHT = "inner_right";
+	private const SHAPE_OUTER_LEFT = "outer_left";
+	private const SHAPE_OUTER_RIGHT = "outer_right";
+
 	/** @var int */
 	protected $facing = Facing::NORTH;
 	/** @var bool */
 	protected $upsideDown = false;
+	/** @var string */
+	protected $shape = self::SHAPE_STRAIGHT;
 
 	protected function writeStateToMeta() : int{
-		return (5 - $this->facing) | ($this->upsideDown ? 0x04 : 0);
+		return (5 - $this->facing) | ($this->upsideDown ? BlockLegacyMetadata::STAIR_FLAG_UPSIDE_DOWN : 0);
 	}
 
-	public function readStateFromMeta(int $meta) : void{
-		$this->facing = 5 - ($meta & 0x03);
-		$this->upsideDown = ($meta & 0x04) !== 0;
+	public function readStateFromData(int $id, int $stateMeta) : void{
+		$this->facing = BlockDataValidator::read5MinusHorizontalFacing($stateMeta);
+		$this->upsideDown = ($stateMeta & BlockLegacyMetadata::STAIR_FLAG_UPSIDE_DOWN) !== 0;
 	}
 
 	public function getStateBitmask() : int{
 		return 0b111;
 	}
 
-	protected function recalculateCollisionBoxes() : array{
-		$minYSlab = $this->upsideDown ? 0.5 : 0;
+	public function readStateFromWorld() : void{
+		parent::readStateFromWorld();
 
+		$clockwise = Facing::rotateY($this->facing, true);
+		if(($backFacing = $this->getPossibleCornerFacing(false)) !== null){
+			$this->shape = $backFacing === $clockwise ? self::SHAPE_OUTER_RIGHT : self::SHAPE_OUTER_LEFT;
+		}elseif(($frontFacing = $this->getPossibleCornerFacing(true)) !== null){
+			$this->shape = $frontFacing === $clockwise ? self::SHAPE_INNER_RIGHT : self::SHAPE_INNER_LEFT;
+		}else{
+			$this->shape = self::SHAPE_STRAIGHT;
+		}
+	}
+
+	protected function recalculateCollisionBoxes() : array{
+		$topStepFace = $this->upsideDown ? Facing::DOWN : Facing::UP;
 		$bbs = [
-			new AxisAlignedBB(0, $minYSlab, 0, 1, $minYSlab + 0.5, 1)
+			AxisAlignedBB::one()->trim($topStepFace, 0.5)
 		];
 
-		$minY = $this->upsideDown ? 0 : 0.5;
+		$topStep = AxisAlignedBB::one()
+			->trim(Facing::opposite($topStepFace), 0.5)
+			->trim(Facing::opposite($this->facing), 0.5);
 
-		$topStep = new AxisAlignedBB(0, $minY, 0, 1, $minY + 0.5, 1);
-		self::setBoundsForFacing($topStep, $this->facing);
-
-		/** @var Stair $corner */
-		if(($backFacing = $this->getPossibleCornerFacing(false)) !== null){
-			self::setBoundsForFacing($topStep, $backFacing);
-		}elseif(($frontFacing = $this->getPossibleCornerFacing(true)) !== null){
+		if($this->shape === self::SHAPE_OUTER_LEFT or $this->shape === self::SHAPE_OUTER_RIGHT){
+			$topStep->trim(Facing::rotateY($this->facing, $this->shape === self::SHAPE_OUTER_LEFT), 0.5);
+		}elseif($this->shape === self::SHAPE_INNER_LEFT or $this->shape === self::SHAPE_INNER_RIGHT){
 			//add an extra cube
-			$extraCube = new AxisAlignedBB(0, $minY, 0, 1, $minY + 0.5, 1);
-			self::setBoundsForFacing($extraCube, Facing::opposite($this->facing));
-			self::setBoundsForFacing($extraCube, $frontFacing);
-			$bbs[] = $extraCube;
+			$bbs[] = AxisAlignedBB::one()
+				->trim(Facing::opposite($topStepFace), 0.5)
+				->trim($this->facing, 0.5) //avoid overlapping with main step
+				->trim(Facing::rotateY($this->facing, $this->shape === self::SHAPE_INNER_LEFT), 0.5);
 		}
 
 		$bbs[] = $topStep;
@@ -79,37 +97,16 @@ abstract class Stair extends Transparent{
 
 	private function getPossibleCornerFacing(bool $oppositeFacing) : ?int{
 		$side = $this->getSide($oppositeFacing ? Facing::opposite($this->facing) : $this->facing);
-		if($side instanceof Stair and $side->upsideDown === $this->upsideDown and (
-			$side->facing === Facing::rotate($this->facing, Facing::AXIS_Y, true) or
-			$side->facing === Facing::rotate($this->facing, Facing::AXIS_Y, false))
-		){
-			return $side->facing;
-		}
-		return null;
+		return (
+			$side instanceof Stair and
+			$side->upsideDown === $this->upsideDown and
+			Facing::axis($side->facing) !== Facing::axis($this->facing) //perpendicular
+		) ? $side->facing : null;
 	}
 
-	private static function setBoundsForFacing(AxisAlignedBB $bb, int $facing) : void{
-		switch($facing){
-			case Facing::EAST:
-				$bb->minX = 0.5;
-				break;
-			case Facing::WEST:
-				$bb->maxX = 0.5;
-				break;
-			case Facing::SOUTH:
-				$bb->minZ = 0.5;
-				break;
-			case Facing::NORTH:
-				$bb->maxZ = 0.5;
-				break;
-			default:
-				throw new \InvalidArgumentException("Facing must be horizontal");
-		}
-	}
-
-	public function place(Item $item, Block $blockReplace, Block $blockClicked, int $face, Vector3 $clickVector, Player $player = null) : bool{
+	public function place(Item $item, Block $blockReplace, Block $blockClicked, int $face, Vector3 $clickVector, ?Player $player = null) : bool{
 		if($player !== null){
-			$this->facing = Bearing::toFacing($player->getDirection());
+			$this->facing = $player->getHorizontalFacing();
 		}
 		$this->upsideDown = (($clickVector->y > 0.5 and $face !== Facing::UP) or $face === Facing::DOWN);
 

@@ -25,6 +25,7 @@ namespace pocketmine\item;
 
 use pocketmine\block\Block;
 use pocketmine\block\BlockFactory;
+use pocketmine\block\BlockLegacyIds;
 use pocketmine\block\Liquid;
 use pocketmine\event\player\PlayerBucketFillEvent;
 use pocketmine\math\Vector3;
@@ -36,7 +37,7 @@ class Bucket extends Item{
 		return 16;
 	}
 
-	public function onActivate(Player $player, Block $blockReplace, Block $blockClicked, int $face, Vector3 $clickVector) : bool{
+	public function onActivate(Player $player, Block $blockReplace, Block $blockClicked, int $face, Vector3 $clickVector) : ItemUseResult{
 		//TODO: move this to generic placement logic
 		if($blockClicked instanceof Liquid and $blockClicked->isSource()){
 			$stack = clone $this;
@@ -46,9 +47,9 @@ class Bucket extends Item{
 			$ev = new PlayerBucketFillEvent($player, $blockReplace, $face, $this, $resultItem);
 			$ev->call();
 			if(!$ev->isCancelled()){
-				$player->getLevel()->setBlock($blockClicked, BlockFactory::get(Block::AIR));
-				$player->getLevel()->broadcastLevelSoundEvent($blockClicked->add(0.5, 0.5, 0.5), $blockClicked->getBucketFillSound());
-				if($player->isSurvival()){
+				$player->getWorld()->setBlock($blockClicked, BlockFactory::get(BlockLegacyIds::AIR));
+				$player->getWorld()->addSound($blockClicked->add(0.5, 0.5, 0.5), $blockClicked->getBucketFillSound());
+				if($player->hasFiniteResources()){
 					if($stack->getCount() === 0){
 						$player->getInventory()->setItemInHand($ev->getItem());
 					}else{
@@ -58,13 +59,12 @@ class Bucket extends Item{
 				}else{
 					$player->getInventory()->addItem($ev->getItem());
 				}
-			}else{
-				$player->getInventory()->sendContents($player);
+				return ItemUseResult::SUCCESS();
 			}
 
-			return true;
+			return ItemUseResult::FAIL();
 		}
 
-		return false;
+		return ItemUseResult::NONE();
 	}
 }

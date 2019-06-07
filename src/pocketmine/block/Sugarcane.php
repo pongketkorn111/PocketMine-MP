@@ -23,7 +23,9 @@ declare(strict_types=1);
 
 namespace pocketmine\block;
 
+use pocketmine\block\utils\BlockDataValidator;
 use pocketmine\event\block\BlockGrowEvent;
+use pocketmine\item\Fertilizer;
 use pocketmine\item\Item;
 use pocketmine\math\Facing;
 use pocketmine\math\Vector3;
@@ -31,49 +33,43 @@ use pocketmine\Player;
 
 class Sugarcane extends Flowable{
 
-	protected $id = self::SUGARCANE_BLOCK;
-
-	protected $itemId = Item::SUGARCANE;
-
 	/** @var int */
 	protected $age = 0;
 
-	public function __construct(){
-
+	public function __construct(BlockIdentifier $idInfo, string $name, ?BlockBreakInfo $breakInfo = null){
+		parent::__construct($idInfo, $name, $breakInfo ?? BlockBreakInfo::instant());
 	}
 
 	protected function writeStateToMeta() : int{
 		return $this->age;
 	}
 
-	public function readStateFromMeta(int $meta) : void{
-		$this->age = $meta;
+	public function readStateFromData(int $id, int $stateMeta) : void{
+		$this->age = BlockDataValidator::readBoundedInt("age", $stateMeta, 0, 15);
 	}
 
 	public function getStateBitmask() : int{
 		return 0b1111;
 	}
 
-	public function getName() : string{
-		return "Sugarcane";
-	}
-
-	public function onActivate(Item $item, Player $player = null) : bool{
-		if($item->getId() === Item::DYE and $item->getDamage() === 0x0F){ //Bonemeal
-			if($this->getSide(Facing::DOWN)->getId() !== self::SUGARCANE_BLOCK){
+	public function onInteract(Item $item, int $face, Vector3 $clickVector, ?Player $player = null) : bool{
+		if($item instanceof Fertilizer){
+			if($this->getSide(Facing::DOWN)->getId() !== BlockLegacyIds::SUGARCANE_BLOCK){
 				for($y = 1; $y < 3; ++$y){
-					$b = $this->getLevel()->getBlockAt($this->x, $this->y + $y, $this->z);
-					if($b->getId() === self::AIR){
-						$ev = new BlockGrowEvent($b, BlockFactory::get(Block::SUGARCANE_BLOCK));
+					$b = $this->getWorld()->getBlockAt($this->x, $this->y + $y, $this->z);
+					if($b->getId() === BlockLegacyIds::AIR){
+						$ev = new BlockGrowEvent($b, BlockFactory::get(BlockLegacyIds::SUGARCANE_BLOCK));
 						$ev->call();
-						if(!$ev->isCancelled()){
-							$this->getLevel()->setBlock($b, $ev->getNewState());
+						if($ev->isCancelled()){
+							break;
 						}
+						$this->getWorld()->setBlock($b, $ev->getNewState());
+					}else{
 						break;
 					}
 				}
 				$this->age = 0;
-				$this->getLevel()->setBlock($this, $this);
+				$this->getWorld()->setBlock($this, $this);
 			}
 
 			$item->pop();
@@ -86,8 +82,8 @@ class Sugarcane extends Flowable{
 
 	public function onNearbyBlockChange() : void{
 		$down = $this->getSide(Facing::DOWN);
-		if($down->isTransparent() and $down->getId() !== self::SUGARCANE_BLOCK){
-			$this->getLevel()->useBreakOn($this);
+		if($down->isTransparent() and $down->getId() !== BlockLegacyIds::SUGARCANE_BLOCK){
+			$this->getWorld()->useBreakOn($this);
 		}
 	}
 
@@ -96,29 +92,29 @@ class Sugarcane extends Flowable{
 	}
 
 	public function onRandomTick() : void{
-		if($this->getSide(Facing::DOWN)->getId() !== self::SUGARCANE_BLOCK){
+		if($this->getSide(Facing::DOWN)->getId() !== BlockLegacyIds::SUGARCANE_BLOCK){
 			if($this->age === 15){
 				for($y = 1; $y < 3; ++$y){
-					$b = $this->getLevel()->getBlockAt($this->x, $this->y + $y, $this->z);
-					if($b->getId() === self::AIR){
-						$this->getLevel()->setBlock($b, BlockFactory::get(Block::SUGARCANE_BLOCK));
+					$b = $this->getWorld()->getBlockAt($this->x, $this->y + $y, $this->z);
+					if($b->getId() === BlockLegacyIds::AIR){
+						$this->getWorld()->setBlock($b, BlockFactory::get(BlockLegacyIds::SUGARCANE_BLOCK));
 						break;
 					}
 				}
 				$this->age = 0;
-				$this->getLevel()->setBlock($this, $this);
+				$this->getWorld()->setBlock($this, $this);
 			}else{
 				++$this->age;
-				$this->getLevel()->setBlock($this, $this);
+				$this->getWorld()->setBlock($this, $this);
 			}
 		}
 	}
 
-	public function place(Item $item, Block $blockReplace, Block $blockClicked, int $face, Vector3 $clickVector, Player $player = null) : bool{
+	public function place(Item $item, Block $blockReplace, Block $blockClicked, int $face, Vector3 $clickVector, ?Player $player = null) : bool{
 		$down = $this->getSide(Facing::DOWN);
-		if($down->getId() === self::SUGARCANE_BLOCK){
+		if($down->getId() === BlockLegacyIds::SUGARCANE_BLOCK){
 			return parent::place($item, $blockReplace, $blockClicked, $face, $clickVector, $player);
-		}elseif($down->getId() === self::GRASS or $down->getId() === self::DIRT or $down->getId() === self::SAND){
+		}elseif($down->getId() === BlockLegacyIds::GRASS or $down->getId() === BlockLegacyIds::DIRT or $down->getId() === BlockLegacyIds::SAND){
 			foreach(Facing::HORIZONTAL as $side){
 				if($down->getSide($side) instanceof Water){
 					return parent::place($item, $blockReplace, $blockClicked, $face, $clickVector, $player);

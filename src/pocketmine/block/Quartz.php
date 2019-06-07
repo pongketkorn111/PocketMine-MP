@@ -27,19 +27,7 @@ use pocketmine\item\TieredTool;
 
 class Quartz extends Solid{
 
-	public const NORMAL = 0;
-	public const CHISELED = 1;
-	public const PILLAR = 2;
-
-	public function getHardness() : float{
-		return 0.8;
-	}
-
-	public function getToolType() : int{
-		return BlockToolType::TYPE_PICKAXE;
-	}
-
-	public function getToolHarvestLevel() : int{
-		return TieredTool::TIER_WOODEN;
+	public function __construct(BlockIdentifier $idInfo, string $name, ?BlockBreakInfo $breakInfo = null){
+		parent::__construct($idInfo, $name, $breakInfo ?? new BlockBreakInfo(0.8, BlockToolType::TYPE_PICKAXE, TieredTool::TIER_WOODEN));
 	}
 }

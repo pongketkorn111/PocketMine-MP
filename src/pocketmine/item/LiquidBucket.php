@@ -52,30 +52,29 @@ class LiquidBucket extends Item{
 		return 0;
 	}
 
-	public function onActivate(Player $player, Block $blockReplace, Block $blockClicked, int $face, Vector3 $clickVector) : bool{
+	public function onActivate(Player $player, Block $blockReplace, Block $blockClicked, int $face, Vector3 $clickVector) : ItemUseResult{
 		if(!$blockReplace->canBeReplaced()){
-			return false;
+			return ItemUseResult::NONE();
 		}
 
 		//TODO: move this to generic placement logic
 		$resultBlock = BlockFactory::get($this->liquidId);
-		if($resultBlock instanceof Liquid){
+		if($resultBlock instanceof Liquid){ //TODO: this should never be false
 			$ev = new PlayerBucketEmptyEvent($player, $blockReplace, $face, $this, ItemFactory::get(Item::BUCKET));
 			$ev->call();
 			if(!$ev->isCancelled()){
-				$player->getLevel()->setBlock($blockReplace, $resultBlock->getFlowingForm());
-				$player->getLevel()->broadcastLevelSoundEvent($blockClicked->add(0.5, 0.5, 0.5), $resultBlock->getBucketEmptySound());
+				$player->getWorld()->setBlock($blockReplace, $resultBlock->getFlowingForm());
+				$player->getWorld()->addSound($blockClicked->add(0.5, 0.5, 0.5), $resultBlock->getBucketEmptySound());
 
-				if($player->isSurvival()){
+				if($player->hasFiniteResources()){
 					$player->getInventory()->setItemInHand($ev->getItem());
 				}
-			}else{
-				$player->getInventory()->sendContents($player);
+				return ItemUseResult::SUCCESS();
 			}
 
-			return true;
+			return ItemUseResult::FAIL();
 		}
 
-		return false;
+		return ItemUseResult::NONE();
 	}
 }

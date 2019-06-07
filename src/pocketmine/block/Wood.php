@@ -23,22 +23,24 @@ declare(strict_types=1);
 
 namespace pocketmine\block;
 
-use pocketmine\block\utils\PillarRotationTrait;
+use pocketmine\block\utils\TreeType;
 
 class Wood extends Solid{
-	use PillarRotationTrait;
 
-	public const OAK = 0;
-	public const SPRUCE = 1;
-	public const BIRCH = 2;
-	public const JUNGLE = 3;
+	/** @var TreeType */
+	private $treeType;
 
-	public function getHardness() : float{
-		return 2;
+	public function __construct(BlockIdentifier $idInfo, string $name, TreeType $treeType, ?BlockBreakInfo $breakInfo = null){
+		parent::__construct($idInfo, $name, $breakInfo ?? new BlockBreakInfo(2.0, BlockToolType::TYPE_AXE));
+		$this->treeType = $treeType;
 	}
 
-	public function getToolType() : int{
-		return BlockToolType::TYPE_AXE;
+	/**
+	 * TODO: this is ad hoc, but add an interface for this to all tree-related blocks
+	 * @return TreeType
+	 */
+	public function getTreeType() : TreeType{
+		return $this->treeType;
 	}
 
 	public function getFuelTime() : int{

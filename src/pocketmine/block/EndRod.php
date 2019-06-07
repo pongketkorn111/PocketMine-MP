@@ -23,6 +23,7 @@ declare(strict_types=1);
 
 namespace pocketmine\block;
 
+use pocketmine\block\utils\BlockDataValidator;
 use pocketmine\item\Item;
 use pocketmine\math\AxisAlignedBB;
 use pocketmine\math\Facing;
@@ -31,13 +32,11 @@ use pocketmine\Player;
 
 class EndRod extends Flowable{
 
-	protected $id = Block::END_ROD;
-
 	/** @var int */
 	protected $facing = Facing::DOWN;
 
-	public function __construct(){
-
+	public function __construct(BlockIdentifier $idInfo, string $name, ?BlockBreakInfo $breakInfo = null){
+		parent::__construct($idInfo, $name, $breakInfo ?? BlockBreakInfo::instant());
 	}
 
 	protected function writeStateToMeta() : int{
@@ -47,23 +46,19 @@ class EndRod extends Flowable{
 		return $this->facing ^ 1; //TODO: in PC this is always the same as facing, just PE is stupid
 	}
 
-	public function readStateFromMeta(int $meta) : void{
-		if($meta === 0 or $meta === 1){
-			$this->facing = $meta;
-		}else{
-			$this->facing = $meta ^ 1; //TODO: see above
+	public function readStateFromData(int $id, int $stateMeta) : void{
+		if($stateMeta !== 0 and $stateMeta !== 1){
+			$stateMeta ^= 1;
 		}
+
+		$this->facing = BlockDataValidator::readFacing($stateMeta);
 	}
 
 	public function getStateBitmask() : int{
 		return 0b111;
 	}
 
-	public function getName() : string{
-		return "End Rod";
-	}
-
-	public function place(Item $item, Block $blockReplace, Block $blockClicked, int $face, Vector3 $clickVector, Player $player = null) : bool{
+	public function place(Item $item, Block $blockReplace, Block $blockClicked, int $face, Vector3 $clickVector, ?Player $player = null) : bool{
 		$this->facing = $face;
 		if($blockClicked instanceof EndRod and $blockClicked->facing === $this->facing){
 			$this->facing = Facing::opposite($face);
@@ -81,40 +76,15 @@ class EndRod extends Flowable{
 	}
 
 	protected function recalculateBoundingBox() : ?AxisAlignedBB{
-		$m = Facing::axis($this->facing);
-		$width = 0.375;
+		$myAxis = Facing::axis($this->facing);
 
-		switch($m){
-			case Facing::AXIS_Y:
-				return new AxisAlignedBB(
-					$width,
-					0,
-					$width,
-					1 - $width,
-					1,
-					1 - $width
-				);
-			case Facing::AXIS_Z:
-				return new AxisAlignedBB(
-					$width,
-					$width,
-					0,
-					1 - $width,
-					1 - $width,
-					1
-				);
-
-			case Facing::AXIS_X:
-				return new AxisAlignedBB(
-					0,
-					$width,
-					$width,
-					1,
-					1 - $width,
-					1 - $width
-				);
+		$bb = AxisAlignedBB::one();
+		foreach([Facing::AXIS_Y, Facing::AXIS_Z, Facing::AXIS_X] as $axis){
+			if($axis === $myAxis){
+				continue;
+			}
+			$bb->squash($axis, 6 / 16);
 		}
-
-		return null;
+		return $bb;
 	}
 }

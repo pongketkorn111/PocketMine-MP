@@ -34,6 +34,10 @@ trait PillarRotationTrait{
 	/** @var int */
 	protected $axis = Facing::AXIS_Y;
 
+	protected function getAxisMetaShift() : int{
+		return 2; //default
+	}
+
 	/**
 	 * @see Block::writeStateToMeta()
 	 * @return int
@@ -43,11 +47,13 @@ trait PillarRotationTrait{
 	}
 
 	/**
-	 * @see Block::readStateFromMeta()
-	 * @param int $meta
+	 * @see Block::readStateFromData()
+	 *
+	 * @param int $id
+	 * @param int $stateMeta
 	 */
-	public function readStateFromMeta(int $meta) : void{
-		$this->readAxisFromMeta($meta);
+	public function readStateFromData(int $id, int $stateMeta) : void{
+		$this->readAxisFromMeta($stateMeta);
 	}
 
 	/**
@@ -55,17 +61,20 @@ trait PillarRotationTrait{
 	 * @return int
 	 */
 	public function getStateBitmask() : int{
-		return 0b1100;
+		return 0b11 << $this->getAxisMetaShift();
 	}
 
 	protected function readAxisFromMeta(int $meta) : void{
 		static $map = [
 			0 => Facing::AXIS_Y,
 			1 => Facing::AXIS_X,
-			2 => Facing::AXIS_Z,
-			3 => Facing::AXIS_Y //TODO: how to deal with all-bark logs?
+			2 => Facing::AXIS_Z
 		];
-		$this->axis = $map[$meta >> 2];
+		$axis = $meta >> $this->getAxisMetaShift();
+		if(!isset($map[$axis])){
+			throw new InvalidBlockStateException("Invalid axis meta $axis");
+		}
+		$this->axis = $map[$axis];
 	}
 
 	protected function writeAxisToMeta() : int{
@@ -74,7 +83,7 @@ trait PillarRotationTrait{
 			Facing::AXIS_Z => 2,
 			Facing::AXIS_X => 1
 		];
-		return $bits[$this->axis] << 2;
+		return $bits[$this->axis] << $this->getAxisMetaShift();
 	}
 
 	/**
@@ -89,7 +98,7 @@ trait PillarRotationTrait{
 	 *
 	 * @return bool
 	 */
-	public function place(Item $item, Block $blockReplace, Block $blockClicked, int $face, Vector3 $clickVector, Player $player = null) : bool{
+	public function place(Item $item, Block $blockReplace, Block $blockClicked, int $face, Vector3 $clickVector, ?Player $player = null) : bool{
 		$this->axis = Facing::axis($face);
 		/** @see Block::place() */
 		return parent::place($item, $blockReplace, $blockClicked, $face, $clickVector, $player);

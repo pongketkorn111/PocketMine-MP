@@ -23,47 +23,48 @@ declare(strict_types=1);
 
 namespace pocketmine\block;
 
+use pocketmine\block\utils\InvalidBlockStateException;
 use pocketmine\item\Item;
 use pocketmine\math\Facing;
 use pocketmine\math\Vector3;
 use pocketmine\Player;
+use function array_map;
+use function array_reverse;
+use function array_search;
+use function array_shift;
+use function count;
+use function implode;
+use function in_array;
 
 abstract class BaseRail extends Flowable{
-
-	public const STRAIGHT_NORTH_SOUTH = 0;
-	public const STRAIGHT_EAST_WEST = 1;
-	public const ASCENDING_EAST = 2;
-	public const ASCENDING_WEST = 3;
-	public const ASCENDING_NORTH = 4;
-	public const ASCENDING_SOUTH = 5;
 
 	protected const FLAG_ASCEND = 1 << 24; //used to indicate direction-up
 
 	protected const CONNECTIONS = [
 		//straights
-		self::STRAIGHT_NORTH_SOUTH => [
+		BlockLegacyMetadata::RAIL_STRAIGHT_NORTH_SOUTH => [
 			Facing::NORTH,
 			Facing::SOUTH
 		],
-		self::STRAIGHT_EAST_WEST => [
+		BlockLegacyMetadata::RAIL_STRAIGHT_EAST_WEST => [
 			Facing::EAST,
 			Facing::WEST
 		],
 
 		//ascending
-		self::ASCENDING_EAST => [
+		BlockLegacyMetadata::RAIL_ASCENDING_EAST => [
 			Facing::WEST,
 			Facing::EAST | self::FLAG_ASCEND
 		],
-		self::ASCENDING_WEST => [
+		BlockLegacyMetadata::RAIL_ASCENDING_WEST => [
 			Facing::EAST,
 			Facing::WEST | self::FLAG_ASCEND
 		],
-		self::ASCENDING_NORTH => [
+		BlockLegacyMetadata::RAIL_ASCENDING_NORTH => [
 			Facing::SOUTH,
 			Facing::NORTH | self::FLAG_ASCEND
 		],
-		self::ASCENDING_SOUTH => [
+		BlockLegacyMetadata::RAIL_ASCENDING_SOUTH => [
 			Facing::NORTH,
 			Facing::SOUTH | self::FLAG_ASCEND
 		]
@@ -72,32 +73,30 @@ abstract class BaseRail extends Flowable{
 	/** @var int[] */
 	protected $connections = [];
 
-	public function __construct(){
-
+	public function __construct(BlockIdentifier $idInfo, string $name, ?BlockBreakInfo $breakInfo = null){
+		parent::__construct($idInfo, $name, $breakInfo ?? new BlockBreakInfo(0.7));
 	}
 
 	protected function writeStateToMeta() : int{
 		if(empty($this->connections)){
-			return self::STRAIGHT_NORTH_SOUTH;
+			return BlockLegacyMetadata::RAIL_STRAIGHT_NORTH_SOUTH;
 		}
 		return $this->getMetaForState($this->connections);
 	}
 
-	public function readStateFromMeta(int $meta) : void{
-		//on invalid states, this will return an empty array, allowing this rail to transform into any other state
-		//TODO: should this throw instead?
-		$this->connections = $this->getConnectionsFromMeta($meta);
+	public function readStateFromData(int $id, int $stateMeta) : void{
+		$connections = $this->getConnectionsFromMeta($stateMeta);
+		if($connections === null){
+			throw new InvalidBlockStateException("Invalid rail type meta $stateMeta");
+		}
+		$this->connections = $connections;
 	}
 
 	public function getStateBitmask() : int{
 		return 0b1111;
 	}
 
-	public function getHardness() : float{
-		return 0.7;
-	}
-
-	public function place(Item $item, Block $blockReplace, Block $blockClicked, int $face, Vector3 $clickVector, Player $player = null) : bool{
+	public function place(Item $item, Block $blockReplace, Block $blockClicked, int $face, Vector3 $clickVector, ?Player $player = null) : bool{
 		if(!$blockReplace->getSide(Facing::DOWN)->isTransparent()){
 			$this->tryReconnect();
 			return parent::place($item, $blockReplace, $blockClicked, $face, $clickVector, $player);
@@ -112,7 +111,7 @@ abstract class BaseRail extends Flowable{
 			$meta = array_search(array_reverse($connections), $lookup, true);
 		}
 		if($meta === false){
-			throw new \InvalidArgumentException("No meta value matches connections " . implode(", ", array_map('dechex', $connections)));
+			throw new \InvalidArgumentException("No meta value matches connections " . implode(", ", array_map('\dechex', $connections)));
 		}
 
 		return $meta;
@@ -138,7 +137,7 @@ abstract class BaseRail extends Flowable{
 	 *
 	 * @return int[]
 	 */
-	abstract protected function getConnectionsFromMeta(int $meta) : array;
+	abstract protected function getConnectionsFromMeta(int $meta) : ?array;
 
 	/**
 	 * Returns all the directions this rail is already connected in.
@@ -241,7 +240,7 @@ abstract class BaseRail extends Flowable{
 				if(isset($otherPossible[$otherSide])){
 					$otherConnections[] = $otherSide;
 					$other->setConnections($otherConnections);
-					$other->level->setBlock($other, $other);
+					$other->world->setBlock($other, $other);
 
 					$changed = true;
 					$thisConnections[] = $thisSide;
@@ -269,11 +268,11 @@ abstract class BaseRail extends Flowable{
 
 	public function onNearbyBlockChange() : void{
 		if($this->getSide(Facing::DOWN)->isTransparent()){
-			$this->level->useBreakOn($this);
+			$this->world->useBreakOn($this);
 		}else{
 			foreach($this->connections as $connection){
 				if(($connection & self::FLAG_ASCEND) !== 0 and $this->getSide($connection & ~self::FLAG_ASCEND)->isTransparent()){
-					$this->level->useBreakOn($this);
+					$this->world->useBreakOn($this);
 					break;
 				}
 			}

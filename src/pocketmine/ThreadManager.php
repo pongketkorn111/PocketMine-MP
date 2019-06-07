@@ -23,39 +23,39 @@ declare(strict_types=1);
 
 namespace pocketmine;
 
-use pocketmine\utils\MainLogger;
+use function spl_object_id;
 
 class ThreadManager extends \Volatile{
 
 	/** @var ThreadManager */
 	private static $instance = null;
 
-	public static function init(){
+	public static function init() : void{
 		self::$instance = new ThreadManager();
 	}
 
 	/**
 	 * @return ThreadManager
 	 */
-	public static function getInstance(){
+	public static function getInstance() : ThreadManager{
 		return self::$instance;
 	}
 
 	/**
 	 * @param Worker|Thread $thread
 	 */
-	public function add($thread){
+	public function add($thread) : void{
 		if($thread instanceof Thread or $thread instanceof Worker){
-			$this->{spl_object_hash($thread)} = $thread;
+			$this->{spl_object_id($thread)} = $thread;
 		}
 	}
 
 	/**
 	 * @param Worker|Thread $thread
 	 */
-	public function remove($thread){
+	public function remove($thread) : void{
 		if($thread instanceof Thread or $thread instanceof Worker){
-			unset($this->{spl_object_hash($thread)});
+			unset($this->{spl_object_id($thread)});
 		}
 	}
 
@@ -72,7 +72,7 @@ class ThreadManager extends \Volatile{
 	}
 
 	public function stopAll() : int{
-		$logger = MainLogger::getLogger();
+		$logger = \GlobalLogger::get();
 
 		$erroredThreads = 0;
 

@@ -26,44 +26,32 @@ namespace pocketmine\inventory;
 use pocketmine\event\inventory\InventoryOpenEvent;
 use pocketmine\item\Item;
 use pocketmine\item\ItemFactory;
-use pocketmine\level\Level;
-use pocketmine\math\Vector3;
-use pocketmine\network\mcpe\protocol\InventoryContentPacket;
-use pocketmine\network\mcpe\protocol\InventorySlotPacket;
-use pocketmine\network\mcpe\protocol\types\ContainerIds;
 use pocketmine\Player;
+use function array_slice;
+use function count;
+use function max;
+use function min;
+use function spl_object_id;
 
 abstract class BaseInventory implements Inventory{
 
 	/** @var int */
 	protected $maxStackSize = Inventory::MAX_STACK;
-	/** @var string */
-	protected $name;
-	/** @var string */
-	protected $title;
 	/** @var \SplFixedArray|Item[] */
 	protected $slots = [];
 	/** @var Player[] */
 	protected $viewers = [];
-	/** @var InventoryEventProcessor */
-	protected $eventProcessor;
+	/** @var InventoryChangeListener[] */
+	protected $listeners = [];
 
 	/**
-	 * @param Item[] $items
 	 * @param int    $size
-	 * @param string $title
+	 * @param Item[] $items
 	 */
-	public function __construct(array $items = [], int $size = null, string $title = null){
-		$this->slots = new \SplFixedArray($size ?? $this->getDefaultSize());
-		$this->title = $title ?? $this->getName();
+	public function __construct(int $size, array $items = []){
+		$this->slots = new \SplFixedArray($size);
 
 		$this->setContents($items, false);
-	}
-
-	abstract public function getName() : string;
-
-	public function getTitle() : string{
-		return $this->title;
 	}
 
 	/**
@@ -80,18 +68,16 @@ abstract class BaseInventory implements Inventory{
 	 *
 	 * @param int $size
 	 */
-	public function setSize(int $size){
+	public function setSize(int $size) : void{
 		$this->slots->setSize($size);
 	}
-
-	abstract public function getDefaultSize() : int;
 
 	public function getMaxStackSize() : int{
 		return $this->maxStackSize;
 	}
 
 	public function getItem(int $index) : Item{
-		return $this->slots[$index] !== null ? clone $this->slots[$index] : ItemFactory::get(Item::AIR, 0, 0);
+		return $this->slots[$index] !== null ? clone $this->slots[$index] : ItemFactory::air();
 	}
 
 	/**
@@ -101,13 +87,12 @@ abstract class BaseInventory implements Inventory{
 	 */
 	public function getContents(bool $includeEmpty = false) : array{
 		$contents = [];
-		$air = null;
 
 		foreach($this->slots as $i => $slot){
 			if($slot !== null){
 				$contents[$i] = clone $slot;
 			}elseif($includeEmpty){
-				$contents[$i] = $air ?? ($air = ItemFactory::get(Item::AIR, 0, 0));
+				$contents[$i] = ItemFactory::air();
 			}
 		}
 
@@ -123,16 +108,23 @@ abstract class BaseInventory implements Inventory{
 			$items = array_slice($items, 0, $this->getSize(), true);
 		}
 
+		$listeners = $this->listeners;
+		$this->listeners = [];
+
 		for($i = 0, $size = $this->getSize(); $i < $size; ++$i){
 			if(!isset($items[$i])){
 				if($this->slots[$i] !== null){
 					$this->clear($i, false);
 				}
 			}else{
-				if(!$this->setItem($i, $items[$i], false)){
-					$this->clear($i, false);
-				}
+				$this->setItem($i, $items[$i], false);
 			}
+		}
+
+		$this->addChangeListeners(...$listeners); //don't directly write, in case listeners were added while operation was in progress
+
+		foreach($this->listeners as $listener){
+			$listener->onContentChange($this);
 		}
 
 		if($send){
@@ -140,42 +132,17 @@ abstract class BaseInventory implements Inventory{
 		}
 	}
 
-	/**
-	 * Drops the contents of the inventory into the specified Level at the specified position and clears the inventory
-	 * contents.
-	 *
-	 * @param Level   $level
-	 * @param Vector3 $position
-	 */
-	public function dropContents(Level $level, Vector3 $position) : void{
-		foreach($this->getContents() as $item){
-			$level->dropItem($position, $item);
-		}
-
-		$this->clearAll();
-	}
-
-	public function setItem(int $index, Item $item, bool $send = true) : bool{
+	public function setItem(int $index, Item $item, bool $send = true) : void{
 		if($item->isNull()){
-			$item = ItemFactory::get(Item::AIR, 0, 0);
+			$item = ItemFactory::air();
 		}else{
 			$item = clone $item;
 		}
 
 		$oldItem = $this->getItem($index);
-		if($this->eventProcessor !== null){
-			$newItem = $this->eventProcessor->onSlotChange($this, $index, $oldItem, $item);
-			if($newItem === null){
-				return false;
-			}
-		}else{
-			$newItem = $item;
-		}
 
-		$this->slots[$index] = $newItem->isNull() ? null : $newItem;
+		$this->slots[$index] = $item->isNull() ? null : $item;
 		$this->onSlotChange($index, $oldItem, $send);
-
-		return true;
 	}
 
 	public function contains(Item $item) : bool{
@@ -248,11 +215,9 @@ abstract class BaseInventory implements Inventory{
 
 	public function canAddItem(Item $item) : bool{
 		$item = clone $item;
-		$checkDamage = !$item->hasAnyDamageValue();
-		$checkTags = $item->hasNamedTag();
 		for($i = 0, $size = $this->getSize(); $i < $size; ++$i){
 			$slot = $this->getItem($i);
-			if($item->equals($slot, $checkDamage, $checkTags)){
+			if($item->equals($slot)){
 				if(($diff = $slot->getMaxStackSize() - $slot->getCount()) > 0){
 					$item->setCount($item->getCount() - $diff);
 				}
@@ -361,18 +326,19 @@ abstract class BaseInventory implements Inventory{
 		return $itemSlots;
 	}
 
-	public function clear(int $index, bool $send = true) : bool{
-		return $this->setItem($index, ItemFactory::get(Item::AIR, 0, 0), $send);
+	public function clear(int $index, bool $send = true) : void{
+		$this->setItem($index, ItemFactory::air(), $send);
 	}
 
 	public function clearAll(bool $send = true) : void{
-		for($i = 0, $size = $this->getSize(); $i < $size; ++$i){
-			$this->clear($i, false);
-		}
+		$this->setContents([], $send);
+	}
 
-		if($send){
-			$this->sendContents($this->getViewers());
-		}
+	public function swap(int $slot1, int $slot2) : void{
+		$i1 = $this->getItem($slot1);
+		$i2 = $this->getItem($slot2);
+		$this->setItem($slot1, $i2);
+		$this->setItem($slot2, $i1);
 	}
 
 	/**
@@ -413,20 +379,22 @@ abstract class BaseInventory implements Inventory{
 		$this->onClose($who);
 	}
 
-	public function onOpen(Player $who) : void{
-		$this->viewers[spl_object_hash($who)] = $who;
+	protected function onOpen(Player $who) : void{
+		$this->viewers[spl_object_id($who)] = $who;
 	}
 
-	public function onClose(Player $who) : void{
-		unset($this->viewers[spl_object_hash($who)]);
+	protected function onClose(Player $who) : void{
+		unset($this->viewers[spl_object_id($who)]);
 	}
 
-	public function onSlotChange(int $index, Item $before, bool $send) : void{
+	protected function onSlotChange(int $index, Item $before, bool $send) : void{
+		foreach($this->listeners as $listener){
+			$listener->onSlotChange($this, $index);
+		}
 		if($send){
 			$this->sendSlot($index, $this->getViewers());
 		}
 	}
-
 
 	/**
 	 * @param Player|Player[] $target
@@ -436,16 +404,8 @@ abstract class BaseInventory implements Inventory{
 			$target = [$target];
 		}
 
-		$pk = new InventoryContentPacket();
-		$pk->items = $this->getContents(true);
-
 		foreach($target as $player){
-			if(($id = $player->getWindowId($this)) === ContainerIds::NONE){
-				$this->close($player);
-				continue;
-			}
-			$pk->windowId = $id;
-			$player->sendDataPacket($pk);
+			$player->getNetworkSession()->syncInventoryContents($this);
 		}
 	}
 
@@ -458,17 +418,8 @@ abstract class BaseInventory implements Inventory{
 			$target = [$target];
 		}
 
-		$pk = new InventorySlotPacket();
-		$pk->inventorySlot = $index;
-		$pk->item = $this->getItem($index);
-
 		foreach($target as $player){
-			if(($id = $player->getWindowId($this)) === ContainerIds::NONE){
-				$this->close($player);
-				continue;
-			}
-			$pk->windowId = $id;
-			$player->sendDataPacket($pk);
+			$player->getNetworkSession()->syncInventorySlot($this, $index);
 		}
 	}
 
@@ -476,11 +427,19 @@ abstract class BaseInventory implements Inventory{
 		return $slot >= 0 and $slot < $this->slots->getSize();
 	}
 
-	public function getEventProcessor() : ?InventoryEventProcessor{
-		return $this->eventProcessor;
+	public function addChangeListeners(InventoryChangeListener ...$listeners) : void{
+		foreach($listeners as $listener){
+			$this->listeners[spl_object_id($listener)] = $listener;
+		}
 	}
 
-	public function setEventProcessor(?InventoryEventProcessor $eventProcessor) : void{
-		$this->eventProcessor = $eventProcessor;
+	public function removeChangeListeners(InventoryChangeListener ...$listeners) : void{
+		foreach($listeners as $listener){
+			unset($this->listeners[spl_object_id($listener)]);
+		}
+	}
+
+	public function getChangeListeners() : array{
+		return $this->listeners;
 	}
 }

@@ -28,16 +28,21 @@ use pocketmine\item\ItemFactory;
 use pocketmine\math\Facing;
 use pocketmine\math\Vector3;
 use pocketmine\Player;
+use function mt_rand;
 
 class TallGrass extends Flowable{
+
+	public function __construct(BlockIdentifier $idInfo, string $name, ?BlockBreakInfo $breakInfo = null){
+		parent::__construct($idInfo, $name, $breakInfo ?? BlockBreakInfo::instant(BlockToolType::TYPE_SHEARS, 1));
+	}
 
 	public function canBeReplaced() : bool{
 		return true;
 	}
 
-	public function place(Item $item, Block $blockReplace, Block $blockClicked, int $face, Vector3 $clickVector, Player $player = null) : bool{
-		$down = $this->getSide(Facing::DOWN);
-		if($down->getId() === self::GRASS){
+	public function place(Item $item, Block $blockReplace, Block $blockClicked, int $face, Vector3 $clickVector, ?Player $player = null) : bool{
+		$down = $this->getSide(Facing::DOWN)->getId();
+		if($down === BlockLegacyIds::GRASS or $down === BlockLegacyIds::DIRT){
 			return parent::place($item, $blockReplace, $blockClicked, $face, $clickVector, $player);
 		}
 
@@ -46,20 +51,12 @@ class TallGrass extends Flowable{
 
 	public function onNearbyBlockChange() : void{
 		if($this->getSide(Facing::DOWN)->isTransparent()){ //Replace with common break method
-			$this->getLevel()->setBlock($this, BlockFactory::get(Block::AIR));
+			$this->world->useBreakOn($this);
 		}
 	}
 
-	public function getToolType() : int{
-		return BlockToolType::TYPE_SHEARS;
-	}
-
-	public function getToolHarvestLevel() : int{
-		return 1;
-	}
-
 	public function getDrops(Item $item) : array{
-		if($this->isCompatibleWithTool($item)){
+		if($this->breakInfo->isToolCompatible($item)){
 			return parent::getDrops($item);
 		}
 

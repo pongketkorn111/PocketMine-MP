@@ -25,6 +25,12 @@ namespace pocketmine\timings;
 
 use pocketmine\entity\Living;
 use pocketmine\Server;
+use function count;
+use function fwrite;
+use function microtime;
+use function round;
+use function spl_object_id;
+use const PHP_EOL;
 
 class TimingsHandler{
 
@@ -38,7 +44,7 @@ class TimingsHandler{
 	/**
 	 * @param resource $fp
 	 */
-	public static function printTimings($fp){
+	public static function printTimings($fp) : void{
 		fwrite($fp, "Minecraft" . PHP_EOL);
 
 		foreach(self::$HANDLERS as $timings){
@@ -58,9 +64,9 @@ class TimingsHandler{
 
 		$entities = 0;
 		$livingEntities = 0;
-		foreach(Server::getInstance()->getLevels() as $level){
-			$entities += count($level->getEntities());
-			foreach($level->getEntities() as $e){
+		foreach(Server::getInstance()->getWorldManager()->getWorlds() as $world){
+			$entities += count($world->getEntities());
+			foreach($world->getEntities() as $e){
 				if($e instanceof Living){
 					++$livingEntities;
 				}
@@ -87,7 +93,7 @@ class TimingsHandler{
 		return self::$timingStart;
 	}
 
-	public static function reload(){
+	public static function reload() : void{
 		if(self::$enabled){
 			foreach(self::$HANDLERS as $timings){
 				$timings->reset();
@@ -96,7 +102,7 @@ class TimingsHandler{
 		}
 	}
 
-	public static function tick(bool $measure = true){
+	public static function tick(bool $measure = true) : void{
 		if(self::$enabled){
 			if($measure){
 				foreach(self::$HANDLERS as $timings){
@@ -144,14 +150,14 @@ class TimingsHandler{
 	 * @param string         $name
 	 * @param TimingsHandler $parent
 	 */
-	public function __construct(string $name, TimingsHandler $parent = null){
+	public function __construct(string $name, ?TimingsHandler $parent = null){
 		$this->name = $name;
 		$this->parent = $parent;
 
-		self::$HANDLERS[spl_object_hash($this)] = $this;
+		self::$HANDLERS[spl_object_id($this)] = $this;
 	}
 
-	public function startTiming(){
+	public function startTiming() : void{
 		if(self::$enabled and ++$this->timingDepth === 1){
 			$this->start = microtime(true);
 			if($this->parent !== null and ++$this->parent->timingDepth === 1){
@@ -160,7 +166,7 @@ class TimingsHandler{
 		}
 	}
 
-	public function stopTiming(){
+	public function stopTiming() : void{
 		if(self::$enabled){
 			if(--$this->timingDepth !== 0 or $this->start === 0){
 				return;
@@ -178,7 +184,7 @@ class TimingsHandler{
 		}
 	}
 
-	public function reset(){
+	public function reset() : void{
 		$this->count = 0;
 		$this->curCount = 0;
 		$this->violations = 0;
@@ -188,7 +194,7 @@ class TimingsHandler{
 		$this->timingDepth = 0;
 	}
 
-	public function remove(){
-		unset(self::$HANDLERS[spl_object_hash($this)]);
+	public function remove() : void{
+		unset(self::$HANDLERS[spl_object_id($this)]);
 	}
 }

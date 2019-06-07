@@ -23,11 +23,14 @@ declare(strict_types=1);
 
 namespace pocketmine\inventory;
 
+use pocketmine\world\sound\ChestCloseSound;
+use pocketmine\world\sound\ChestOpenSound;
+use pocketmine\world\sound\Sound;
 use pocketmine\network\mcpe\protocol\BlockEventPacket;
-use pocketmine\network\mcpe\protocol\LevelSoundEventPacket;
 use pocketmine\network\mcpe\protocol\types\WindowTypes;
 use pocketmine\Player;
 use pocketmine\tile\Chest;
+use function count;
 
 class ChestInventory extends ContainerInventory{
 
@@ -38,19 +41,11 @@ class ChestInventory extends ContainerInventory{
 	 * @param Chest $tile
 	 */
 	public function __construct(Chest $tile){
-		parent::__construct($tile);
+		parent::__construct($tile, 27);
 	}
 
 	public function getNetworkType() : int{
 		return WindowTypes::CONTAINER;
-	}
-
-	public function getName() : string{
-		return "Chest";
-	}
-
-	public function getDefaultSize() : int{
-		return 27;
 	}
 
 	/**
@@ -61,19 +56,29 @@ class ChestInventory extends ContainerInventory{
 		return $this->holder;
 	}
 
-	public function onOpen(Player $who) : void{
+	protected function getOpenSound() : Sound{
+		return new ChestOpenSound();
+	}
+
+	protected function getCloseSound() : Sound{
+		return new ChestCloseSound();
+	}
+
+	protected function onOpen(Player $who) : void{
 		parent::onOpen($who);
 
 		if(count($this->getViewers()) === 1 and $this->getHolder()->isValid()){
+			//TODO: this crap really shouldn't be managed by the inventory
 			$this->broadcastBlockEventPacket(true);
-			$this->getHolder()->getLevel()->broadcastLevelSoundEvent($this->getHolder()->add(0.5, 0.5, 0.5), LevelSoundEventPacket::SOUND_CHEST_OPEN);
+			$this->getHolder()->getWorld()->addSound($this->getHolder()->add(0.5, 0.5, 0.5), $this->getOpenSound());
 		}
 	}
 
-	public function onClose(Player $who) : void{
+	protected function onClose(Player $who) : void{
 		if(count($this->getViewers()) === 1 and $this->getHolder()->isValid()){
+			//TODO: this crap really shouldn't be managed by the inventory
 			$this->broadcastBlockEventPacket(false);
-			$this->getHolder()->getLevel()->broadcastLevelSoundEvent($this->getHolder()->add(0.5, 0.5, 0.5), LevelSoundEventPacket::SOUND_CHEST_CLOSED);
+			$this->getHolder()->getWorld()->addSound($this->getHolder()->add(0.5, 0.5, 0.5), $this->getCloseSound());
 		}
 		parent::onClose($who);
 	}
@@ -87,6 +92,6 @@ class ChestInventory extends ContainerInventory{
 		$pk->z = (int) $holder->z;
 		$pk->eventType = 1; //it's always 1 for a chest
 		$pk->eventData = $isOpen ? 1 : 0;
-		$holder->getLevel()->broadcastPacketToViewers($holder, $pk);
+		$holder->getWorld()->broadcastPacketToViewers($holder, $pk);
 	}
 }

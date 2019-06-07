@@ -23,34 +23,37 @@ declare(strict_types=1);
 
 namespace pocketmine\block;
 
+use pocketmine\block\utils\BlockDataValidator;
 use pocketmine\event\block\BlockGrowEvent;
+use pocketmine\item\Fertilizer;
 use pocketmine\item\Item;
 use pocketmine\math\Facing;
 use pocketmine\math\Vector3;
 use pocketmine\Player;
+use function mt_rand;
 
 abstract class Crops extends Flowable{
 	/** @var int */
 	protected $age = 0;
 
-	public function __construct(){
-
+	public function __construct(BlockIdentifier $idInfo, string $name, ?BlockBreakInfo $breakInfo = null){
+		parent::__construct($idInfo, $name, $breakInfo ?? BlockBreakInfo::instant());
 	}
 
 	protected function writeStateToMeta() : int{
 		return $this->age;
 	}
 
-	public function readStateFromMeta(int $meta) : void{
-		$this->age = $meta;
+	public function readStateFromData(int $id, int $stateMeta) : void{
+		$this->age = BlockDataValidator::readBoundedInt("age", $stateMeta, 0, 7);
 	}
 
 	public function getStateBitmask() : int{
 		return 0b111;
 	}
 
-	public function place(Item $item, Block $blockReplace, Block $blockClicked, int $face, Vector3 $clickVector, Player $player = null) : bool{
-		if($blockReplace->getSide(Facing::DOWN)->getId() === Block::FARMLAND){
+	public function place(Item $item, Block $blockReplace, Block $blockClicked, int $face, Vector3 $clickVector, ?Player $player = null) : bool{
+		if($blockReplace->getSide(Facing::DOWN)->getId() === BlockLegacyIds::FARMLAND){
 			return parent::place($item, $blockReplace, $blockClicked, $face, $clickVector, $player);
 		}
 
@@ -58,8 +61,8 @@ abstract class Crops extends Flowable{
 	}
 
 
-	public function onActivate(Item $item, Player $player = null) : bool{
-		if($item->getId() === Item::DYE and $item->getDamage() === 0x0F){ //Bonemeal
+	public function onInteract(Item $item, int $face, Vector3 $clickVector, ?Player $player = null) : bool{
+		if($this->age < 7 and $item instanceof Fertilizer){
 			$block = clone $this;
 			$block->age += mt_rand(2, 5);
 			if($block->age > 7){
@@ -69,7 +72,7 @@ abstract class Crops extends Flowable{
 			$ev = new BlockGrowEvent($this, $block);
 			$ev->call();
 			if(!$ev->isCancelled()){
-				$this->getLevel()->setBlock($this, $ev->getNewState());
+				$this->getWorld()->setBlock($this, $ev->getNewState());
 			}
 
 			$item->pop();
@@ -81,8 +84,8 @@ abstract class Crops extends Flowable{
 	}
 
 	public function onNearbyBlockChange() : void{
-		if($this->getSide(Facing::DOWN)->getId() !== Block::FARMLAND){
-			$this->getLevel()->useBreakOn($this);
+		if($this->getSide(Facing::DOWN)->getId() !== BlockLegacyIds::FARMLAND){
+			$this->getWorld()->useBreakOn($this);
 		}
 	}
 
@@ -97,7 +100,7 @@ abstract class Crops extends Flowable{
 			$ev = new BlockGrowEvent($this, $block);
 			$ev->call();
 			if(!$ev->isCancelled()){
-				$this->getLevel()->setBlock($this, $ev->getNewState());
+				$this->getWorld()->setBlock($this, $ev->getNewState());
 			}
 		}
 	}

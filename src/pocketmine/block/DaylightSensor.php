@@ -23,13 +23,16 @@ declare(strict_types=1);
 
 namespace pocketmine\block;
 
+use pocketmine\block\utils\BlockDataValidator;
 use pocketmine\item\Item;
 use pocketmine\math\AxisAlignedBB;
+use pocketmine\math\Facing;
+use pocketmine\math\Vector3;
 use pocketmine\Player;
 
 class DaylightSensor extends Transparent{
-
-	protected $itemId = self::DAYLIGHT_SENSOR;
+	/** @var BlockIdentifierFlattened */
+	protected $idInfo;
 
 	/** @var int */
 	protected $power = 0;
@@ -37,20 +40,21 @@ class DaylightSensor extends Transparent{
 	/** @var bool */
 	protected $inverted = false;
 
-	public function __construct(){
-
+	public function __construct(BlockIdentifierFlattened $idInfo, string $name, ?BlockBreakInfo $breakInfo = null){
+		parent::__construct($idInfo, $name, $breakInfo ?? new BlockBreakInfo(0.2, BlockToolType::TYPE_AXE));
 	}
 
 	public function getId() : int{
-		return $this->inverted ? self::DAYLIGHT_SENSOR_INVERTED : self::DAYLIGHT_SENSOR;
+		return $this->inverted ? $this->idInfo->getSecondId() : parent::getId();
 	}
 
 	protected function writeStateToMeta() : int{
 		return $this->power;
 	}
 
-	public function readStateFromMeta(int $meta) : void{
-		$this->power = $meta;
+	public function readStateFromData(int $id, int $stateMeta) : void{
+		$this->power = BlockDataValidator::readBoundedInt("power", $stateMeta, 0, 15);
+		$this->inverted = $id === $this->idInfo->getSecondId();
 	}
 
 	public function getStateBitmask() : int{
@@ -61,33 +65,27 @@ class DaylightSensor extends Transparent{
 		return $this->inverted;
 	}
 
-	public function setInverted(bool $inverted = true) : void{
+	/**
+	 * @param bool $inverted
+	 *
+	 * @return $this
+	 */
+	public function setInverted(bool $inverted = true) : self{
 		$this->inverted = $inverted;
-	}
-
-	public function getName() : string{
-		return "Daylight Sensor";
-	}
-
-	public function getHardness() : float{
-		return 0.2;
+		return $this;
 	}
 
 	public function getFuelTime() : int{
 		return 300;
 	}
 
-	public function getToolType() : int{
-		return BlockToolType::TYPE_AXE;
-	}
-
 	protected function recalculateBoundingBox() : ?AxisAlignedBB{
-		return new AxisAlignedBB(0, 0, 0, 1, 0.5, 1);
+		return AxisAlignedBB::one()->trim(Facing::UP, 0.5);
 	}
 
-	public function onActivate(Item $item, Player $player = null) : bool{
+	public function onInteract(Item $item, int $face, Vector3 $clickVector, ?Player $player = null) : bool{
 		$this->inverted = !$this->inverted;
-		$this->level->setBlock($this, $this);
+		$this->world->setBlock($this, $this);
 		return true;
 	}
 

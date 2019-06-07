@@ -29,17 +29,14 @@ namespace {
 namespace pocketmine {
 
 	use pocketmine\utils\MainLogger;
+	use pocketmine\utils\Process;
 	use pocketmine\utils\ServerKiller;
 	use pocketmine\utils\Terminal;
 	use pocketmine\utils\Timezone;
-	use pocketmine\utils\Utils;
 	use pocketmine\utils\VersionString;
 	use pocketmine\wizard\SetupWizard;
 
-	const NAME = "PocketMine-MP";
-	const BASE_VERSION = "4.0.0";
-	const IS_DEVELOPMENT_BUILD = true;
-	const BUILD_NUMBER = 0;
+	require_once __DIR__ . '/VersionInfo.php';
 
 	const MIN_PHP_VERSION = "7.2.0";
 
@@ -76,13 +73,16 @@ namespace pocketmine {
 
 		$extensions = [
 			"bcmath" => "BC Math",
+			"chunkutils2" => "PocketMine ChunkUtils v2",
 			"curl" => "cURL",
 			"crypto" => "php-crypto",
 			"ctype" => "ctype",
 			"date" => "Date",
+			"ds" => "Data Structures",
 			"gmp" => "GMP",
 			"hash" => "Hash",
 			"json" => "JSON",
+			"leveldb" => "LevelDB",
 			"mbstring" => "Multibyte String",
 			"openssl" => "OpenSSL",
 			"pcre" => "PCRE",
@@ -163,7 +163,7 @@ namespace pocketmine {
 		exit(1);
 	}
 
-	set_error_handler([Utils::class, 'errorExceptionHandler']);
+	\ErrorUtils::setErrorExceptionHandler();
 
 	/*
 	 * We now use the Composer autoloader, but this autoloader is still for loading plugins.
@@ -179,11 +179,10 @@ namespace pocketmine {
 	ini_set("default_charset", "utf-8");
 
 	ini_set("memory_limit", '-1');
-	define('pocketmine\START_TIME', microtime(true));
 
-	define('pocketmine\RESOURCE_PATH', \pocketmine\PATH . 'src' . DIRECTORY_SEPARATOR . 'pocketmine' . DIRECTORY_SEPARATOR . 'resources' . DIRECTORY_SEPARATOR);
+	define('pocketmine\RESOURCE_PATH', \pocketmine\PATH . 'resources' . DIRECTORY_SEPARATOR);
 
-	$opts = getopt("", ["data:", "plugins:", "no-wizard"]);
+	$opts = getopt("", ["data:", "plugins:", "no-wizard", "enable-ansi", "disable-ansi"]);
 
 	define('pocketmine\DATA', isset($opts["data"]) ? $opts["data"] . DIRECTORY_SEPARATOR : realpath(getcwd()) . DIRECTORY_SEPARATOR);
 	define('pocketmine\PLUGIN_PATH', isset($opts["plugins"]) ? $opts["plugins"] . DIRECTORY_SEPARATOR : realpath(getcwd()) . DIRECTORY_SEPARATOR . "plugins" . DIRECTORY_SEPARATOR);
@@ -192,16 +191,28 @@ namespace pocketmine {
 		mkdir(\pocketmine\DATA, 0777, true);
 	}
 
+	define('pocketmine\LOCK_FILE_PATH', \pocketmine\DATA . 'server.lock');
+	define('pocketmine\LOCK_FILE', fopen(\pocketmine\LOCK_FILE_PATH, "cb"));
+	if(!flock(\pocketmine\LOCK_FILE, LOCK_EX | LOCK_NB)){
+		critical_error("Another " . \pocketmine\NAME . " instance is already using this folder (" . realpath(\pocketmine\DATA) . ").");
+		critical_error("Please stop the other server first before running a new one.");
+		exit(1);
+	}
+
 	//Logger has a dependency on timezone
-	$tzError = Timezone::init();
+	Timezone::init();
+
+	if(isset($opts["enable-ansi"])){
+		Terminal::init(true);
+	}elseif(isset($opts["disable-ansi"])){
+		Terminal::init(false);
+	}else{
+		Terminal::init();
+	}
 
 	$logger = new MainLogger(\pocketmine\DATA . "server.log");
 	$logger->registerStatic();
-
-	foreach($tzError as $e){
-		$logger->warning($e);
-	}
-	unset($tzError);
+	\GlobalLogger::set($logger);
 
 	if(extension_loaded("xdebug")){
 		$logger->warning(PHP_EOL . PHP_EOL . PHP_EOL . "\tYou are running " . \pocketmine\NAME . " with xdebug enabled. This has a major impact on performance." . PHP_EOL . PHP_EOL);
@@ -217,9 +228,9 @@ namespace pocketmine {
 	$gitHash = str_repeat("00", 20);
 
 	if(\Phar::running(true) === ""){
-		if(Utils::execute("git rev-parse HEAD", $out) === 0 and $out !== false and strlen($out = trim($out)) === 40){
+		if(Process::execute("git rev-parse HEAD", $out) === 0 and $out !== false and strlen($out = trim($out)) === 40){
 			$gitHash = trim($out);
-			if(Utils::execute("git diff --quiet") === 1 or Utils::execute("git diff --cached --quiet") === 1){ //Locally-modified
+			if(Process::execute("git diff --quiet") === 1 or Process::execute("git diff --cached --quiet") === 1){ //Locally-modified
 				$gitHash .= "-dirty";
 			}
 		}
@@ -247,6 +258,8 @@ namespace pocketmine {
 			}
 		}
 
+		//TODO: move this to a Server field
+		define('pocketmine\START_TIME', microtime(true));
 		ThreadManager::init();
 		new Server($autoloader, $logger, \pocketmine\DATA, \pocketmine\PLUGIN_PATH);
 
@@ -260,7 +273,7 @@ namespace pocketmine {
 			if(\pocketmine\DEBUG > 1){
 				echo "Some threads could not be stopped, performing a force-kill" . PHP_EOL . PHP_EOL;
 			}
-			Utils::kill(getmypid());
+			Process::kill(getmypid());
 		}
 	}while(false);
 

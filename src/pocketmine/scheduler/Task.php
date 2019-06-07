@@ -23,6 +23,8 @@ declare(strict_types=1);
 
 namespace pocketmine\scheduler;
 
+use pocketmine\utils\Utils;
+
 abstract class Task{
 
 	/** @var TaskHandler */
@@ -46,10 +48,14 @@ abstract class Task{
 		return -1;
 	}
 
+	public function getName() : string{
+		return Utils::getNiceClassName($this);
+	}
+
 	/**
 	 * @param TaskHandler|null $taskHandler
 	 */
-	final public function setHandler(TaskHandler $taskHandler = null){
+	final public function setHandler(?TaskHandler $taskHandler) : void{
 		if($this->taskHandler === null or $taskHandler === null){
 			$this->taskHandler = $taskHandler;
 		}

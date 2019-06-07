@@ -31,6 +31,9 @@ use pocketmine\permission\PermissionAttachmentInfo;
 use pocketmine\plugin\Plugin;
 use pocketmine\Server;
 use pocketmine\utils\MainLogger;
+use function explode;
+use function trim;
+use const PHP_INT_MAX;
 
 class ConsoleCommandSender implements CommandSender{
 
@@ -68,7 +71,7 @@ class ConsoleCommandSender implements CommandSender{
 	 *
 	 * @return PermissionAttachment
 	 */
-	public function addAttachment(Plugin $plugin, string $name = null, bool $value = null) : PermissionAttachment{
+	public function addAttachment(Plugin $plugin, ?string $name = null, ?bool $value = null) : PermissionAttachment{
 		return $this->perm->addAttachment($plugin, $name, $value);
 	}
 
@@ -77,11 +80,11 @@ class ConsoleCommandSender implements CommandSender{
 	 *
 	 * @return void
 	 */
-	public function removeAttachment(PermissionAttachment $attachment){
+	public function removeAttachment(PermissionAttachment $attachment) : void{
 		$this->perm->removeAttachment($attachment);
 	}
 
-	public function recalculatePermissions(){
+	public function recalculatePermissions() : void{
 		$this->perm->recalculatePermissions();
 	}
 
@@ -95,14 +98,14 @@ class ConsoleCommandSender implements CommandSender{
 	/**
 	 * @return Server
 	 */
-	public function getServer(){
+	public function getServer() : Server{
 		return Server::getInstance();
 	}
 
 	/**
 	 * @param TextContainer|string $message
 	 */
-	public function sendMessage($message){
+	public function sendMessage($message) : void{
 		if($message instanceof TextContainer){
 			$message = $this->getServer()->getLanguage()->translate($message);
 		}else{
@@ -131,7 +134,7 @@ class ConsoleCommandSender implements CommandSender{
 	/**
 	 * @param bool $value
 	 */
-	public function setOp(bool $value){
+	public function setOp(bool $value) : void{
 
 	}
 
@@ -139,7 +142,7 @@ class ConsoleCommandSender implements CommandSender{
 		return $this->lineHeight ?? PHP_INT_MAX;
 	}
 
-	public function setScreenLineHeight(int $height = null){
+	public function setScreenLineHeight(?int $height) : void{
 		if($height !== null and $height < 1){
 			throw new \InvalidArgumentException("Line height must be at least 1");
 		}

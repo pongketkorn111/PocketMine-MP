@@ -27,34 +27,38 @@ use pocketmine\item\Item;
 use pocketmine\math\Facing;
 use pocketmine\math\Vector3;
 use pocketmine\Player;
+use pocketmine\world\BlockTransaction;
 
 class DoublePlant extends Flowable{
-	private const BITFLAG_TOP = 0x08;
 
 	/** @var bool */
 	protected $top = false;
 
-	protected function writeStateToMeta() : int{
-		return ($this->top ? self::BITFLAG_TOP : 0);
+	public function __construct(BlockIdentifier $idInfo, string $name, ?BlockBreakInfo $breakInfo = null){
+		parent::__construct($idInfo, $name, $breakInfo ?? BlockBreakInfo::instant());
 	}
 
-	public function readStateFromMeta(int $meta) : void{
-		$this->top = ($meta & self::BITFLAG_TOP) !== 0;
+	protected function writeStateToMeta() : int{
+		return ($this->top ? BlockLegacyMetadata::DOUBLE_PLANT_FLAG_TOP : 0);
+	}
+
+	public function readStateFromData(int $id, int $stateMeta) : void{
+		$this->top = ($stateMeta & BlockLegacyMetadata::DOUBLE_PLANT_FLAG_TOP) !== 0;
 	}
 
 	public function getStateBitmask() : int{
 		return 0b1000;
 	}
 
-	public function place(Item $item, Block $blockReplace, Block $blockClicked, int $face, Vector3 $clickVector, Player $player = null) : bool{
+	public function place(Item $item, Block $blockReplace, Block $blockClicked, int $face, Vector3 $clickVector, ?Player $player = null) : bool{
 		$id = $blockReplace->getSide(Facing::DOWN)->getId();
-		if(($id === Block::GRASS or $id === Block::DIRT) and $blockReplace->getSide(Facing::UP)->canBeReplaced()){
-			$this->getLevel()->setBlock($blockReplace, $this, false);
+		if(($id === BlockLegacyIds::GRASS or $id === BlockLegacyIds::DIRT) and $blockReplace->getSide(Facing::UP)->canBeReplaced()){
 			$top = clone $this;
 			$top->top = true;
-			$this->getLevel()->setBlock($blockReplace->getSide(Facing::UP), $top, false);
 
-			return true;
+			$transaction = new BlockTransaction($this->world);
+			$transaction->addBlock($blockReplace, $this)->addBlock($blockReplace->getSide(Facing::UP), $top);
+			return $transaction->apply();
 		}
 
 		return false;
@@ -76,7 +80,7 @@ class DoublePlant extends Flowable{
 
 	public function onNearbyBlockChange() : void{
 		if(!$this->isValidHalfPlant() or (!$this->top and $this->getSide(Facing::DOWN)->isTransparent())){
-			$this->getLevel()->useBreakOn($this);
+			$this->getWorld()->useBreakOn($this);
 		}
 	}
 

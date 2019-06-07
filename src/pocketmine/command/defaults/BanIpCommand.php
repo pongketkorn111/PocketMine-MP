@@ -28,6 +28,10 @@ use pocketmine\command\CommandSender;
 use pocketmine\command\utils\InvalidCommandSyntaxException;
 use pocketmine\lang\TranslationContainer;
 use pocketmine\Player;
+use function array_shift;
+use function count;
+use function implode;
+use function preg_match;
 
 class BanIpCommand extends VanillaCommand{
 
@@ -58,9 +62,10 @@ class BanIpCommand extends VanillaCommand{
 			Command::broadcastCommandMessage($sender, new TranslationContainer("commands.banip.success", [$value]));
 		}else{
 			if(($player = $sender->getServer()->getPlayer($value)) instanceof Player){
-				$this->processIPBan($player->getAddress(), $sender, $reason);
+				$ip = $player->getNetworkSession()->getIp();
+				$this->processIPBan($ip, $sender, $reason);
 
-				Command::broadcastCommandMessage($sender, new TranslationContainer("commands.banip.success.players", [$player->getAddress(), $player->getName()]));
+				Command::broadcastCommandMessage($sender, new TranslationContainer("commands.banip.success.players", [$ip, $player->getName()]));
 			}else{
 				$sender->sendMessage(new TranslationContainer("commands.banip.invalid"));
 
@@ -71,11 +76,11 @@ class BanIpCommand extends VanillaCommand{
 		return true;
 	}
 
-	private function processIPBan(string $ip, CommandSender $sender, string $reason){
+	private function processIPBan(string $ip, CommandSender $sender, string $reason) : void{
 		$sender->getServer()->getIPBans()->addBan($ip, $reason, null, $sender->getName());
 
 		foreach($sender->getServer()->getOnlinePlayers() as $player){
-			if($player->getAddress() === $ip){
+			if($player->getNetworkSession()->getIp() === $ip){
 				$player->kick($reason !== "" ? $reason : "IP banned.");
 			}
 		}

@@ -24,13 +24,35 @@ declare(strict_types=1);
 namespace pocketmine\plugin;
 
 use pocketmine\command\Command;
+use pocketmine\command\CommandExecutor;
 use pocketmine\command\CommandSender;
+use pocketmine\command\PluginCommand;
 use pocketmine\command\PluginIdentifiableCommand;
 use pocketmine\scheduler\TaskScheduler;
 use pocketmine\Server;
 use pocketmine\utils\Config;
+use function count;
+use function dirname;
+use function fclose;
+use function file_exists;
+use function fopen;
+use function gettype;
+use function is_array;
+use function is_bool;
+use function is_dir;
+use function is_string;
+use function mkdir;
+use function rtrim;
+use function str_replace;
+use function stream_copy_to_stream;
+use function strlen;
+use function strpos;
+use function strtolower;
+use function substr;
+use function trim;
+use const DIRECTORY_SEPARATOR;
 
-abstract class PluginBase implements Plugin{
+abstract class PluginBase implements Plugin, CommandExecutor{
 
 	/** @var PluginLoader */
 	private $loader;
@@ -67,9 +89,11 @@ abstract class PluginBase implements Plugin{
 		$this->file = rtrim($file, "\\/") . "/";
 		$this->configFile = $this->dataFolder . "config.yml";
 		$this->logger = new PluginLogger($this);
-		$this->scheduler = new TaskScheduler($this->logger, $this->getFullName());
+		$this->scheduler = new TaskScheduler($this->getFullName());
 
 		$this->onLoad();
+
+		$this->registerYamlCommands();
 	}
 
 	/**
@@ -141,6 +165,63 @@ abstract class PluginBase implements Plugin{
 	 */
 	public function getLogger() : PluginLogger{
 		return $this->logger;
+	}
+
+	/**
+	 * Registers commands declared in the plugin manifest
+	 */
+	private function registerYamlCommands() : void{
+		$pluginCmds = [];
+
+		foreach($this->getDescription()->getCommands() as $key => $data){
+			if(strpos($key, ":") !== false){
+				$this->logger->error($this->server->getLanguage()->translateString("pocketmine.plugin.commandError", [$key, $this->getDescription()->getFullName()]));
+				continue;
+			}
+			if(is_array($data)){ //TODO: error out if it isn't
+				$newCmd = new PluginCommand($key, $this);
+				if(isset($data["description"])){
+					$newCmd->setDescription($data["description"]);
+				}
+
+				if(isset($data["usage"])){
+					$newCmd->setUsage($data["usage"]);
+				}
+
+				if(isset($data["aliases"]) and is_array($data["aliases"])){
+					$aliasList = [];
+					foreach($data["aliases"] as $alias){
+						if(strpos($alias, ":") !== false){
+							$this->logger->error($this->server->getLanguage()->translateString("pocketmine.plugin.aliasError", [$alias, $this->getDescription()->getFullName()]));
+							continue;
+						}
+						$aliasList[] = $alias;
+					}
+
+					$newCmd->setAliases($aliasList);
+				}
+
+				if(isset($data["permission"])){
+					if(is_bool($data["permission"])){
+						$newCmd->setPermission($data["permission"] ? "true" : "false");
+					}elseif(is_string($data["permission"])){
+						$newCmd->setPermission($data["permission"]);
+					}else{
+						$this->logger->error("Permission must be a string, " . gettype($data["permission"]) . " given for command $key");
+					}
+				}
+
+				if(isset($data["permission-message"])){
+					$newCmd->setPermissionMessage($data["permission-message"]);
+				}
+
+				$pluginCmds[] = $newCmd;
+			}
+		}
+
+		if(count($pluginCmds) > 0){
+			$this->server->getCommandMap()->registerAll($this->getDescription()->getName(), $pluginCmds);
+		}
 	}
 
 	/**
@@ -306,7 +387,7 @@ abstract class PluginBase implements Plugin{
 	/**
 	 * @return PluginLoader
 	 */
-	public function getPluginLoader(){
+	public function getPluginLoader() : PluginLoader{
 		return $this->loader;
 	}
 

@@ -23,9 +23,12 @@ declare(strict_types=1);
 
 namespace pocketmine\inventory;
 
-use pocketmine\level\Position;
 use pocketmine\network\mcpe\protocol\types\WindowTypes;
 use pocketmine\tile\EnderChest;
+use pocketmine\world\Position;
+use pocketmine\world\sound\EnderChestCloseSound;
+use pocketmine\world\sound\EnderChestOpenSound;
+use pocketmine\world\sound\Sound;
 
 class EnderChestInventory extends ChestInventory{
 
@@ -33,19 +36,11 @@ class EnderChestInventory extends ChestInventory{
 	protected $holder;
 
 	public function __construct(){
-		ContainerInventory::__construct(new Position());
+		ContainerInventory::__construct(new Position(), 27);
 	}
 
 	public function getNetworkType() : int{
 		return WindowTypes::CONTAINER;
-	}
-
-	public function getName() : string{
-		return "EnderChest";
-	}
-
-	public function getDefaultSize() : int{
-		return 27;
 	}
 
 	/**
@@ -53,9 +48,17 @@ class EnderChestInventory extends ChestInventory{
 	 *
 	 * @param EnderChest $enderChest
 	 */
-	public function setHolderPosition(EnderChest $enderChest){
+	public function setHolderPosition(EnderChest $enderChest) : void{
 		$this->holder->setComponents($enderChest->getFloorX(), $enderChest->getFloorY(), $enderChest->getFloorZ());
-		$this->holder->setLevel($enderChest->getLevel());
+		$this->holder->setWorld($enderChest->getWorld());
+	}
+
+	protected function getOpenSound() : Sound{
+		return new EnderChestOpenSound();
+	}
+
+	protected function getCloseSound() : Sound{
+		return new EnderChestCloseSound();
 	}
 
 	/**

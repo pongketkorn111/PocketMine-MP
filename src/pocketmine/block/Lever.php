@@ -23,19 +23,18 @@ declare(strict_types=1);
 
 namespace pocketmine\block;
 
+use pocketmine\block\utils\BlockDataValidator;
 use pocketmine\item\Item;
-use pocketmine\math\Bearing;
 use pocketmine\math\Facing;
 use pocketmine\math\Vector3;
-use pocketmine\network\mcpe\protocol\LevelSoundEventPacket;
 use pocketmine\Player;
+use pocketmine\world\sound\RedstonePowerOffSound;
+use pocketmine\world\sound\RedstonePowerOnSound;
 
 class Lever extends Flowable{
 	protected const BOTTOM = 0;
 	protected const SIDE = 1;
 	protected const TOP = 2;
-
-	protected $id = self::LEVER;
 
 	/** @var int */
 	protected $position = self::BOTTOM;
@@ -44,8 +43,8 @@ class Lever extends Flowable{
 	/** @var bool */
 	protected $powered = false;
 
-	public function __construct(){
-
+	public function __construct(BlockIdentifier $idInfo, string $name, ?BlockBreakInfo $breakInfo = null){
+		parent::__construct($idInfo, $name, $breakInfo ?? new BlockBreakInfo(0.5));
 	}
 
 	protected function writeStateToMeta() : int{
@@ -56,11 +55,11 @@ class Lever extends Flowable{
 		}else{
 			$rotationMeta = 6 - $this->facing;
 		}
-		return $rotationMeta | ($this->powered ? 0x08 : 0);
+		return $rotationMeta | ($this->powered ? BlockLegacyMetadata::LEVER_FLAG_POWERED : 0);
 	}
 
-	public function readStateFromMeta(int $meta) : void{
-		$rotationMeta = $meta & 0x07;
+	public function readStateFromData(int $id, int $stateMeta) : void{
+		$rotationMeta = $stateMeta & 0x07;
 		if($rotationMeta === 5 or $rotationMeta === 6){
 			$this->position = self::TOP;
 			$this->facing = $rotationMeta === 5 ? Facing::SOUTH : Facing::EAST;
@@ -69,32 +68,24 @@ class Lever extends Flowable{
 			$this->facing = $rotationMeta === 7 ? Facing::SOUTH : Facing::EAST;
 		}else{
 			$this->position = self::SIDE;
-			$this->facing = 6 - $rotationMeta;
+			$this->facing = BlockDataValidator::readHorizontalFacing(6 - $rotationMeta);
 		}
 
-		$this->powered = ($meta & 0x08) !== 0;
+		$this->powered = ($stateMeta & BlockLegacyMetadata::LEVER_FLAG_POWERED) !== 0;
 	}
 
 	public function getStateBitmask() : int{
 		return 0b1111;
 	}
 
-	public function getName() : string{
-		return "Lever";
-	}
-
-	public function getHardness() : float{
-		return 0.5;
-	}
-
-	public function place(Item $item, Block $blockReplace, Block $blockClicked, int $face, Vector3 $clickVector, Player $player = null) : bool{
+	public function place(Item $item, Block $blockReplace, Block $blockClicked, int $face, Vector3 $clickVector, ?Player $player = null) : bool{
 		if(!$blockClicked->isSolid()){
 			return false;
 		}
 
 		if(Facing::axis($face) === Facing::AXIS_Y){
 			if($player !== null){
-				$this->facing = Bearing::toFacing(Bearing::opposite($player->getDirection()));
+				$this->facing = Facing::opposite($player->getHorizontalFacing());
 			}
 			$this->position = $face === Facing::DOWN ? self::BOTTOM : self::TOP;
 		}else{
@@ -115,16 +106,16 @@ class Lever extends Flowable{
 		}
 
 		if(!$this->getSide($face)->isSolid()){
-			$this->level->useBreakOn($this);
+			$this->world->useBreakOn($this);
 		}
 	}
 
-	public function onActivate(Item $item, Player $player = null) : bool{
+	public function onInteract(Item $item, int $face, Vector3 $clickVector, ?Player $player = null) : bool{
 		$this->powered = !$this->powered;
-		$this->level->setBlock($this, $this);
-		$this->level->broadcastLevelSoundEvent(
+		$this->world->setBlock($this, $this);
+		$this->world->addSound(
 			$this->add(0.5, 0.5, 0.5),
-			$this->powered ? LevelSoundEventPacket::SOUND_POWER_ON : LevelSoundEventPacket::SOUND_POWER_OFF
+			$this->powered ? new RedstonePowerOnSound() : new RedstonePowerOffSound()
 		);
 		return true;
 	}

@@ -23,6 +23,8 @@ declare(strict_types=1);
 
 namespace pocketmine\lang;
 
+use function count;
+
 class TranslationContainer extends TextContainer{
 
 	/** @var string[] $params */
@@ -50,7 +52,7 @@ class TranslationContainer extends TextContainer{
 	 *
 	 * @return string|null
 	 */
-	public function getParameter(int $i){
+	public function getParameter(int $i) : ?string{
 		return $this->params[$i] ?? null;
 	}
 
@@ -58,7 +60,7 @@ class TranslationContainer extends TextContainer{
 	 * @param int    $i
 	 * @param string $str
 	 */
-	public function setParameter(int $i, string $str){
+	public function setParameter(int $i, string $str) : void{
 		if($i < 0 or $i > count($this->params)){ //Intended, allow to set the last
 			throw new \InvalidArgumentException("Invalid index $i, have " . count($this->params));
 		}
@@ -69,7 +71,7 @@ class TranslationContainer extends TextContainer{
 	/**
 	 * @param string[] $params
 	 */
-	public function setParameters(array $params){
+	public function setParameters(array $params) : void{
 		$i = 0;
 		foreach($params as $str){
 			$this->params[$i] = (string) $str;

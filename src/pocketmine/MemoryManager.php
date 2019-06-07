@@ -27,7 +27,41 @@ use pocketmine\event\server\LowMemoryEvent;
 use pocketmine\scheduler\DumpWorkerMemoryTask;
 use pocketmine\scheduler\GarbageCollectionTask;
 use pocketmine\timings\Timings;
+use pocketmine\utils\Process;
 use pocketmine\utils\Utils;
+use function arsort;
+use function count;
+use function fclose;
+use function file_exists;
+use function file_put_contents;
+use function fopen;
+use function fwrite;
+use function gc_collect_cycles;
+use function gc_disable;
+use function gc_enable;
+use function get_class;
+use function get_declared_classes;
+use function implode;
+use function ini_get;
+use function ini_set;
+use function is_array;
+use function is_object;
+use function is_resource;
+use function is_string;
+use function json_encode;
+use function min;
+use function mkdir;
+use function preg_match;
+use function print_r;
+use function round;
+use function spl_object_hash;
+use function sprintf;
+use function strlen;
+use function strtoupper;
+use function substr;
+use const JSON_PRETTY_PRINT;
+use const JSON_UNESCAPED_SLASHES;
+use const SORT_NUMERIC;
 
 class MemoryManager{
 
@@ -82,7 +116,7 @@ class MemoryManager{
 		$this->init();
 	}
 
-	private function init(){
+	private function init() : void{
 		$this->memoryLimit = ((int) $this->server->getProperty("memory.main-limit", 0)) * 1024 * 1024;
 
 		$defaultMemory = 1024;
@@ -144,6 +178,13 @@ class MemoryManager{
 	}
 
 	/**
+	 * @return int
+	 */
+	public function getGlobalMemoryLimit() : int{
+		return $this->globalMemoryLimit;
+	}
+
+	/**
 	 * @return bool
 	 */
 	public function canUseChunkCache() : bool{
@@ -169,18 +210,18 @@ class MemoryManager{
 	 * @param bool $global
 	 * @param int  $triggerCount
 	 */
-	public function trigger(int $memory, int $limit, bool $global = false, int $triggerCount = 0){
+	public function trigger(int $memory, int $limit, bool $global = false, int $triggerCount = 0) : void{
 		$this->server->getLogger()->debug(sprintf("[Memory Manager] %sLow memory triggered, limit %gMB, using %gMB",
 			$global ? "Global " : "", round(($limit / 1024) / 1024, 2), round(($memory / 1024) / 1024, 2)));
 		if($this->lowMemClearWorldCache){
-			foreach($this->server->getLevels() as $level){
-				$level->clearCache(true);
+			foreach($this->server->getWorldManager()->getWorlds() as $world){
+				$world->clearCache(true);
 			}
 		}
 
 		if($this->lowMemChunkGC){
-			foreach($this->server->getLevels() as $level){
-				$level->doChunkGarbageCollection();
+			foreach($this->server->getWorldManager()->getWorlds() as $world){
+				$world->doChunkGarbageCollection();
 			}
 		}
 
@@ -198,12 +239,12 @@ class MemoryManager{
 	/**
 	 * Called every tick to update the memory manager state.
 	 */
-	public function check(){
+	public function check() : void{
 		Timings::$memoryManagerTimer->startTiming();
 
 		if(($this->memoryLimit > 0 or $this->globalMemoryLimit > 0) and ++$this->checkTicker >= $this->checkRate){
 			$this->checkTicker = 0;
-			$memory = Utils::getMemoryUsage(true);
+			$memory = Process::getMemoryUsage(true);
 			$trigger = false;
 			if($this->memoryLimit > 0 and $memory[0] > $this->memoryLimit){
 				$trigger = 0;
@@ -265,7 +306,7 @@ class MemoryManager{
 	 * @param int    $maxNesting
 	 * @param int    $maxStringSize
 	 */
-	public function dumpServerMemory(string $outputFolder, int $maxNesting, int $maxStringSize){
+	public function dumpServerMemory(string $outputFolder, int $maxNesting, int $maxStringSize) : void{
 		$this->server->getLogger()->notice("[Dump] After the memory dump is done, the server might crash");
 		self::dumpMemory($this->server, $outputFolder, $maxNesting, $maxStringSize, $this->server->getLogger());
 
@@ -288,7 +329,7 @@ class MemoryManager{
 	 *
 	 * @throws \ReflectionException
 	 */
-	public static function dumpMemory($startingObject, string $outputFolder, int $maxNesting, int $maxStringSize, \Logger $logger){
+	public static function dumpMemory($startingObject, string $outputFolder, int $maxNesting, int $maxStringSize, \Logger $logger) : void{
 		$hardLimit = ini_get('memory_limit');
 		ini_set('memory_limit', '-1');
 		gc_disable();
@@ -446,7 +487,7 @@ class MemoryManager{
 	 * @param int      $maxNesting
 	 * @param int      $maxStringSize
 	 */
-	private static function continueDump($from, &$data, array &$objects, array &$refCounts, int $recursion, int $maxNesting, int $maxStringSize){
+	private static function continueDump($from, &$data, array &$objects, array &$refCounts, int $recursion, int $maxNesting, int $maxStringSize) : void{
 		if($maxNesting <= 0){
 			$data = "(error) NESTING LIMIT REACHED";
 			return;

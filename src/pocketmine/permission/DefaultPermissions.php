@@ -32,7 +32,7 @@ abstract class DefaultPermissions{
 	 *
 	 * @return Permission
 	 */
-	public static function registerPermission(Permission $perm, Permission $parent = null) : Permission{
+	public static function registerPermission(Permission $perm, ?Permission $parent = null) : Permission{
 		if($parent instanceof Permission){
 			$parent->getChildren()[$perm->getName()] = true;
 
@@ -51,23 +51,21 @@ abstract class DefaultPermissions{
 		self::registerPermission(new Permission(self::ROOT . ".broadcast.user", "Allows the user to receive user broadcasts", Permission::DEFAULT_TRUE), $broadcasts);
 		$broadcasts->recalculatePermissibles();
 
-		$spawnprotect = self::registerPermission(new Permission(self::ROOT . ".spawnprotect.bypass", "Allows the user to edit blocks within the protected spawn radius", Permission::DEFAULT_OP), $parent);
-		$spawnprotect->recalculatePermissibles();
-
 		$commands = self::registerPermission(new Permission(self::ROOT . ".command", "Allows using all PocketMine commands"), $parent);
 
 		$whitelist = self::registerPermission(new Permission(self::ROOT . ".command.whitelist", "Allows the user to modify the server whitelist", Permission::DEFAULT_OP), $commands);
 		self::registerPermission(new Permission(self::ROOT . ".command.whitelist.add", "Allows the user to add a player to the server whitelist"), $whitelist);
-		self::registerPermission(new Permission(self::ROOT . ".command.whitelist.remove", "Allows the user to remove a player to the server whitelist"), $whitelist);
+		self::registerPermission(new Permission(self::ROOT . ".command.whitelist.remove", "Allows the user to remove a player from the server whitelist"), $whitelist);
 		self::registerPermission(new Permission(self::ROOT . ".command.whitelist.reload", "Allows the user to reload the server whitelist"), $whitelist);
 		self::registerPermission(new Permission(self::ROOT . ".command.whitelist.enable", "Allows the user to enable the server whitelist"), $whitelist);
 		self::registerPermission(new Permission(self::ROOT . ".command.whitelist.disable", "Allows the user to disable the server whitelist"), $whitelist);
-		self::registerPermission(new Permission(self::ROOT . ".command.whitelist.list", "Allows the user to list all the players on the server whitelist"), $whitelist);
+		self::registerPermission(new Permission(self::ROOT . ".command.whitelist.list", "Allows the user to list all players on the server whitelist"), $whitelist);
 		$whitelist->recalculatePermissibles();
 
 		$ban = self::registerPermission(new Permission(self::ROOT . ".command.ban", "Allows the user to ban people", Permission::DEFAULT_OP), $commands);
 		self::registerPermission(new Permission(self::ROOT . ".command.ban.player", "Allows the user to ban players"), $ban);
 		self::registerPermission(new Permission(self::ROOT . ".command.ban.ip", "Allows the user to ban IP addresses"), $ban);
+		self::registerPermission(new Permission(self::ROOT . ".command.ban.list", "Allows the user to list banned players"), $ban);
 		$ban->recalculatePermissibles();
 
 		$unban = self::registerPermission(new Permission(self::ROOT . ".command.unban", "Allows the user to unban people", Permission::DEFAULT_OP), $commands);
@@ -77,7 +75,7 @@ abstract class DefaultPermissions{
 
 		$op = self::registerPermission(new Permission(self::ROOT . ".command.op", "Allows the user to change operators", Permission::DEFAULT_OP), $commands);
 		self::registerPermission(new Permission(self::ROOT . ".command.op.give", "Allows the user to give a player operator status"), $op);
-		self::registerPermission(new Permission(self::ROOT . ".command.op.take", "Allows the user to take a players operator status"), $op);
+		self::registerPermission(new Permission(self::ROOT . ".command.op.take", "Allows the user to take a player's operator status"), $op);
 		$op->recalculatePermissibles();
 
 		$save = self::registerPermission(new Permission(self::ROOT . ".command.save", "Allows the user to save the worlds", Permission::DEFAULT_OP), $commands);
@@ -119,12 +117,13 @@ abstract class DefaultPermissions{
 		self::registerPermission(new Permission(self::ROOT . ".command.seed", "Allows the user to view the seed of the world", Permission::DEFAULT_OP), $commands);
 		self::registerPermission(new Permission(self::ROOT . ".command.status", "Allows the user to view the server performance", Permission::DEFAULT_OP), $commands);
 		self::registerPermission(new Permission(self::ROOT . ".command.gc", "Allows the user to fire garbage collection tasks", Permission::DEFAULT_OP), $commands);
-		self::registerPermission(new Permission(self::ROOT . ".command.dumpmemory", "Allows the user to dump memory contents", Permission::DEFAULT_OP), $commands);
+		self::registerPermission(new Permission(self::ROOT . ".command.dumpmemory", "Allows the user to dump memory contents", Permission::DEFAULT_FALSE), $commands);
 		self::registerPermission(new Permission(self::ROOT . ".command.timings", "Allows the user to records timings for all plugin events", Permission::DEFAULT_OP), $commands);
 		self::registerPermission(new Permission(self::ROOT . ".command.spawnpoint", "Allows the user to change player's spawnpoint", Permission::DEFAULT_OP), $commands);
 		self::registerPermission(new Permission(self::ROOT . ".command.setworldspawn", "Allows the user to change the world spawn", Permission::DEFAULT_OP), $commands);
 		self::registerPermission(new Permission(self::ROOT . ".command.transferserver", "Allows the user to transfer self to another server", Permission::DEFAULT_OP), $commands);
 		self::registerPermission(new Permission(self::ROOT . ".command.title", "Allows the user to send a title to the specified player", Permission::DEFAULT_OP), $commands);
+		self::registerPermission(new Permission(self::ROOT . ".command.difficulty", "Allows the user to change the game difficulty", Permission::DEFAULT_OP), $commands);
 
 		$commands->recalculatePermissibles();
 

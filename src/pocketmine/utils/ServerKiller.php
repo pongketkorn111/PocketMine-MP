@@ -24,6 +24,8 @@ declare(strict_types=1);
 namespace pocketmine\utils;
 
 use pocketmine\Thread;
+use function getmypid;
+use function time;
 
 class ServerKiller extends Thread{
 
@@ -36,7 +38,7 @@ class ServerKiller extends Thread{
 		$this->time = $time;
 	}
 
-	public function run(){
+	public function run() : void{
 		$this->registerClassLoader();
 		$start = time();
 		$this->synchronized(function(){
@@ -46,7 +48,7 @@ class ServerKiller extends Thread{
 		});
 		if(time() - $start >= $this->time){
 			echo "\nTook too long to stop, server was killed forcefully!\n";
-			@Utils::kill(getmypid());
+			@Process::kill(getmypid());
 		}
 	}
 

@@ -25,29 +25,12 @@ namespace pocketmine\block;
 
 use pocketmine\item\Item;
 use pocketmine\item\TieredTool;
+use function mt_rand;
 
 class MonsterSpawner extends Transparent{
 
-	protected $id = self::MONSTER_SPAWNER;
-
-	public function __construct(){
-
-	}
-
-	public function getHardness() : float{
-		return 5;
-	}
-
-	public function getToolType() : int{
-		return BlockToolType::TYPE_PICKAXE;
-	}
-
-	public function getToolHarvestLevel() : int{
-		return TieredTool::TIER_WOODEN;
-	}
-
-	public function getName() : string{
-		return "Monster Spawner";
+	public function __construct(BlockIdentifier $idInfo, string $name, ?BlockBreakInfo $breakInfo = null){
+		parent::__construct($idInfo, $name, $breakInfo ?? new BlockBreakInfo(5.0, BlockToolType::TYPE_PICKAXE, TieredTool::TIER_WOODEN));
 	}
 
 	public function getDropsForCompatibleTool(Item $item) : array{

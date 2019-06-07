@@ -23,6 +23,7 @@ declare(strict_types=1);
 
 namespace pocketmine\block;
 
+use pocketmine\block\utils\BlockDataValidator;
 use pocketmine\entity\Entity;
 use pocketmine\event\block\BlockGrowEvent;
 use pocketmine\event\entity\EntityDamageByBlockEvent;
@@ -35,58 +36,48 @@ use pocketmine\Player;
 
 class Cactus extends Transparent{
 
-	protected $id = self::CACTUS;
-
 	/** @var int */
 	protected $age = 0;
 
-	public function __construct(){
-
+	public function __construct(BlockIdentifier $idInfo, string $name, ?BlockBreakInfo $breakInfo = null){
+		parent::__construct($idInfo, $name, $breakInfo ?? new BlockBreakInfo(0.4));
 	}
 
 	protected function writeStateToMeta() : int{
 		return $this->age;
 	}
 
-	public function readStateFromMeta(int $meta) : void{
-		$this->age = $meta;
+	public function readStateFromData(int $id, int $stateMeta) : void{
+		$this->age = BlockDataValidator::readBoundedInt("age", $stateMeta, 0, 15);
 	}
 
 	public function getStateBitmask() : int{
 		return 0b1111;
 	}
 
-	public function getHardness() : float{
-		return 0.4;
-	}
-
 	public function hasEntityCollision() : bool{
 		return true;
 	}
 
-	public function getName() : string{
-		return "Cactus";
-	}
-
 	protected function recalculateBoundingBox() : ?AxisAlignedBB{
-		static $shrinkSize = 0.0625;
-		return new AxisAlignedBB($shrinkSize, $shrinkSize, $shrinkSize, 1 - $shrinkSize, 1 - $shrinkSize, 1 - $shrinkSize);
+		static $shrinkSize = 1 / 16;
+		return AxisAlignedBB::one()->contract($shrinkSize, 0, $shrinkSize)->trim(Facing::UP, $shrinkSize);
 	}
 
-	public function onEntityCollide(Entity $entity) : void{
+	public function onEntityInside(Entity $entity) : void{
 		$ev = new EntityDamageByBlockEvent($this, $entity, EntityDamageEvent::CAUSE_CONTACT, 1);
 		$entity->attack($ev);
 	}
 
 	public function onNearbyBlockChange() : void{
 		$down = $this->getSide(Facing::DOWN);
-		if($down->getId() !== self::SAND and $down->getId() !== self::CACTUS){
-			$this->getLevel()->useBreakOn($this);
+		if($down->getId() !== BlockLegacyIds::SAND and $down->getId() !== BlockLegacyIds::CACTUS){
+			$this->getWorld()->useBreakOn($this);
 		}else{
 			foreach(Facing::HORIZONTAL as $side){
 				$b = $this->getSide($side);
 				if($b->isSolid()){
-					$this->getLevel()->useBreakOn($this);
+					$this->getWorld()->useBreakOn($this);
 					break;
 				}
 			}
@@ -98,30 +89,33 @@ class Cactus extends Transparent{
 	}
 
 	public function onRandomTick() : void{
-		if($this->getSide(Facing::DOWN)->getId() !== self::CACTUS){
+		if($this->getSide(Facing::DOWN)->getId() !== BlockLegacyIds::CACTUS){
 			if($this->age === 15){
 				for($y = 1; $y < 3; ++$y){
-					$b = $this->getLevel()->getBlockAt($this->x, $this->y + $y, $this->z);
-					if($b->getId() === self::AIR){
-						$ev = new BlockGrowEvent($b, BlockFactory::get(Block::CACTUS));
+					$b = $this->getWorld()->getBlockAt($this->x, $this->y + $y, $this->z);
+					if($b->getId() === BlockLegacyIds::AIR){
+						$ev = new BlockGrowEvent($b, BlockFactory::get(BlockLegacyIds::CACTUS));
 						$ev->call();
-						if(!$ev->isCancelled()){
-							$this->getLevel()->setBlock($b, $ev->getNewState());
+						if($ev->isCancelled()){
+							break;
 						}
+						$this->getWorld()->setBlock($b, $ev->getNewState());
+					}else{
+						break;
 					}
 				}
 				$this->age = 0;
-				$this->getLevel()->setBlock($this, $this);
+				$this->getWorld()->setBlock($this, $this);
 			}else{
 				++$this->age;
-				$this->getLevel()->setBlock($this, $this);
+				$this->getWorld()->setBlock($this, $this);
 			}
 		}
 	}
 
-	public function place(Item $item, Block $blockReplace, Block $blockClicked, int $face, Vector3 $clickVector, Player $player = null) : bool{
+	public function place(Item $item, Block $blockReplace, Block $blockClicked, int $face, Vector3 $clickVector, ?Player $player = null) : bool{
 		$down = $this->getSide(Facing::DOWN);
-		if($down->getId() === self::SAND or $down->getId() === self::CACTUS){
+		if($down->getId() === BlockLegacyIds::SAND or $down->getId() === BlockLegacyIds::CACTUS){
 			foreach(Facing::HORIZONTAL as $side){
 				if($this->getSide($side)->isSolid()){
 					return false;

@@ -26,16 +26,19 @@ namespace pocketmine\tile;
 use pocketmine\block\Furnace as BlockFurnace;
 use pocketmine\event\inventory\FurnaceBurnEvent;
 use pocketmine\event\inventory\FurnaceSmeltEvent;
+use pocketmine\inventory\CallbackInventoryChangeListener;
 use pocketmine\inventory\FurnaceInventory;
 use pocketmine\inventory\FurnaceRecipe;
 use pocketmine\inventory\Inventory;
-use pocketmine\inventory\InventoryEventProcessor;
 use pocketmine\inventory\InventoryHolder;
 use pocketmine\item\Item;
 use pocketmine\item\ItemFactory;
-use pocketmine\level\Level;
+use pocketmine\math\Vector3;
 use pocketmine\nbt\tag\CompoundTag;
 use pocketmine\network\mcpe\protocol\ContainerSetDataPacket;
+use pocketmine\world\World;
+use function ceil;
+use function max;
 
 class Furnace extends Spawnable implements InventoryHolder, Container, Nameable{
 	use NameableTrait {
@@ -50,50 +53,38 @@ class Furnace extends Spawnable implements InventoryHolder, Container, Nameable{
 	/** @var FurnaceInventory */
 	protected $inventory;
 	/** @var int */
-	private $burnTime;
+	private $burnTime = 0;
 	/** @var int */
-	private $cookTime;
+	private $cookTime = 0;
 	/** @var int */
-	private $maxTime;
+	private $maxTime = 0;
 
-	public function __construct(Level $level, CompoundTag $nbt){
-		parent::__construct($level, $nbt);
-		if($this->burnTime > 0){
-			$this->scheduleUpdate();
-		}
+	public function __construct(World $world, Vector3 $pos){
+		$this->inventory = new FurnaceInventory($this);
+		$this->inventory->addChangeListeners(CallbackInventoryChangeListener::onAnyChange(
+			function(Inventory $unused) : void{
+				$this->scheduleUpdate();
+			})
+		);
+
+		parent::__construct($world, $pos);
 	}
 
-	protected function readSaveData(CompoundTag $nbt) : void{
-		$this->burnTime = max(0, $nbt->getShort(self::TAG_BURN_TIME, 0, true));
+	public function readSaveData(CompoundTag $nbt) : void{
+		$this->burnTime = max(0, $nbt->getShort(self::TAG_BURN_TIME, $this->burnTime, true));
 
-		$this->cookTime = $nbt->getShort(self::TAG_COOK_TIME, 0, true);
+		$this->cookTime = $nbt->getShort(self::TAG_COOK_TIME, $this->cookTime, true);
 		if($this->burnTime === 0){
 			$this->cookTime = 0;
 		}
 
-		$this->maxTime = $nbt->getShort(self::TAG_MAX_TIME, 0, true);
+		$this->maxTime = $nbt->getShort(self::TAG_MAX_TIME, $this->maxTime, true);
 		if($this->maxTime === 0){
 			$this->maxTime = $this->burnTime;
 		}
 
 		$this->loadName($nbt);
-
-		$this->inventory = new FurnaceInventory($this);
 		$this->loadItems($nbt);
-
-		$this->inventory->setEventProcessor(new class($this) implements InventoryEventProcessor{
-			/** @var Furnace */
-			private $furnace;
-
-			public function __construct(Furnace $furnace){
-				$this->furnace = $furnace;
-			}
-
-			public function onSlotChange(Inventory $inventory, int $slot, Item $oldItem, Item $newItem) : ?Item{
-				$this->furnace->scheduleUpdate();
-				return $newItem;
-			}
-		});
 	}
 
 	protected function writeSaveData(CompoundTag $nbt) : void{
@@ -146,7 +137,7 @@ class Furnace extends Spawnable implements InventoryHolder, Container, Nameable{
 		$block = $this->getBlock();
 		if($block instanceof BlockFurnace and !$block->isLit()){
 			$block->setLit(true);
-			$this->getLevel()->setBlock($block, $block);
+			$this->getWorld()->setBlock($block, $block);
 		}
 
 		if($this->burnTime > 0 and $ev->isBurning()){
@@ -174,7 +165,7 @@ class Furnace extends Spawnable implements InventoryHolder, Container, Nameable{
 		$fuel = $this->inventory->getFuel();
 		$raw = $this->inventory->getSmelting();
 		$product = $this->inventory->getResult();
-		$smelt = $this->server->getCraftingManager()->matchFurnaceRecipe($raw);
+		$smelt = $this->world->getServer()->getCraftingManager()->matchFurnaceRecipe($raw);
 		$canSmelt = ($smelt instanceof FurnaceRecipe and $raw->getCount() > 0 and (($smelt->getResult()->equals($product) and $product->getCount() < $product->getMaxStackSize()) or $product->isNull()));
 
 		if($this->burnTime <= 0 and $canSmelt and $fuel->getFuelTime() > 0 and $fuel->getCount() > 0){
@@ -188,7 +179,7 @@ class Furnace extends Spawnable implements InventoryHolder, Container, Nameable{
 				++$this->cookTime;
 
 				if($this->cookTime >= 200){ //10 seconds
-					$product = ItemFactory::get($smelt->getResult()->getId(), $smelt->getResult()->getDamage(), $product->getCount() + 1);
+					$product = ItemFactory::get($smelt->getResult()->getId(), $smelt->getResult()->getMeta(), $product->getCount() + 1);
 
 					$ev = new FurnaceSmeltEvent($this, $raw, $product);
 					$ev->call();
@@ -211,7 +202,7 @@ class Furnace extends Spawnable implements InventoryHolder, Container, Nameable{
 			$block = $this->getBlock();
 			if($block instanceof BlockFurnace and $block->isLit()){
 				$block->setLit(false);
-				$this->getLevel()->setBlock($block, $block);
+				$this->getWorld()->setBlock($block, $block);
 			}
 			$this->burnTime = $this->cookTime = $this->maxTime = 0;
 		}

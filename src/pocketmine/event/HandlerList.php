@@ -26,6 +26,9 @@ namespace pocketmine\event;
 use pocketmine\plugin\Plugin;
 use pocketmine\plugin\RegisteredListener;
 use pocketmine\utils\Utils;
+use function array_fill_keys;
+use function in_array;
+use function spl_object_id;
 
 class HandlerList{
 	/**
@@ -117,10 +120,10 @@ class HandlerList{
 		if(!in_array($listener->getPriority(), EventPriority::ALL, true)){
 			return;
 		}
-		if(isset($this->handlerSlots[$listener->getPriority()][spl_object_hash($listener)])){
+		if(isset($this->handlerSlots[$listener->getPriority()][spl_object_id($listener)])){
 			throw new \InvalidStateException("This listener is already registered to priority {$listener->getPriority()} of event {$this->class}");
 		}
-		$this->handlerSlots[$listener->getPriority()][spl_object_hash($listener)] = $listener;
+		$this->handlerSlots[$listener->getPriority()][spl_object_id($listener)] = $listener;
 	}
 
 	/**
@@ -140,15 +143,15 @@ class HandlerList{
 			foreach($this->handlerSlots as $priority => $list){
 				foreach($list as $hash => $listener){
 					if(($object instanceof Plugin and $listener->getPlugin() === $object)
-						or ($object instanceof Listener and $listener->getListener() === $object)
+						or ($object instanceof Listener and (new \ReflectionFunction($listener->getHandler()))->getClosureThis() === $object) //this doesn't even need to be a listener :D
 					){
 						unset($this->handlerSlots[$priority][$hash]);
 					}
 				}
 			}
 		}elseif($object instanceof RegisteredListener){
-			if(isset($this->handlerSlots[$object->getPriority()][spl_object_hash($object)])){
-				unset($this->handlerSlots[$object->getPriority()][spl_object_hash($object)]);
+			if(isset($this->handlerSlots[$object->getPriority()][spl_object_id($object)])){
+				unset($this->handlerSlots[$object->getPriority()][spl_object_id($object)]);
 			}
 		}
 	}

@@ -23,48 +23,41 @@ declare(strict_types=1);
 
 namespace pocketmine\block;
 
-use pocketmine\block\utils\WoodType;
+use pocketmine\block\utils\TreeType;
 use pocketmine\event\block\LeavesDecayEvent;
 use pocketmine\item\Item;
 use pocketmine\item\ItemFactory;
-use pocketmine\level\Level;
 use pocketmine\math\Facing;
 use pocketmine\math\Vector3;
 use pocketmine\Player;
+use pocketmine\world\World;
+use function mt_rand;
 
 class Leaves extends Transparent{
-	/** @var int */
-	protected $woodType;
+	/** @var TreeType */
+	protected $treeType;
 
 	/** @var bool */
 	protected $noDecay = false;
 	/** @var bool */
 	protected $checkDecay = false;
 
-	public function __construct(int $id, int $variant, int $woodType, ?string $name = null){
-		parent::__construct($id, $variant, $name);
-		$this->woodType = $woodType;
+	public function __construct(BlockIdentifier $idInfo, string $name, TreeType $treeType, ?BlockBreakInfo $breakInfo = null){
+		parent::__construct($idInfo, $name, $breakInfo ?? new BlockBreakInfo(0.2, BlockToolType::TYPE_SHEARS));
+		$this->treeType = $treeType;
 	}
 
 	protected function writeStateToMeta() : int{
-		return ($this->noDecay ? 0x04 : 0) | ($this->checkDecay ? 0x08 : 0);
+		return ($this->noDecay ? BlockLegacyMetadata::LEAVES_FLAG_NO_DECAY : 0) | ($this->checkDecay ? BlockLegacyMetadata::LEAVES_FLAG_CHECK_DECAY : 0);
 	}
 
-	public function readStateFromMeta(int $meta) : void{
-		$this->noDecay = ($meta & 0x04) !== 0;
-		$this->checkDecay = ($meta & 0x08) !== 0;
+	public function readStateFromData(int $id, int $stateMeta) : void{
+		$this->noDecay = ($stateMeta & BlockLegacyMetadata::LEAVES_FLAG_NO_DECAY) !== 0;
+		$this->checkDecay = ($stateMeta & BlockLegacyMetadata::LEAVES_FLAG_CHECK_DECAY) !== 0;
 	}
 
 	public function getStateBitmask() : int{
 		return 0b1100;
-	}
-
-	public function getHardness() : float{
-		return 0.2;
-	}
-
-	public function getToolType() : int{
-		return BlockToolType::TYPE_SHEARS;
 	}
 
 	public function diffusesSkyLight() : bool{
@@ -73,14 +66,13 @@ class Leaves extends Transparent{
 
 
 	protected function findLog(Block $pos, array &$visited = [], int $distance = 0) : bool{
-		$index = Level::blockHash($pos->x, $pos->y, $pos->z);
+		$index = World::blockHash($pos->x, $pos->y, $pos->z);
 		if(isset($visited[$index])){
 			return false;
 		}
 		$visited[$index] = true;
 
-		$id = $pos->getId();
-		if($id === Block::WOOD or $id === Block::WOOD2){
+		if($pos instanceof Wood){ //type doesn't matter
 			return true;
 		}
 
@@ -98,7 +90,7 @@ class Leaves extends Transparent{
 	public function onNearbyBlockChange() : void{
 		if(!$this->noDecay and !$this->checkDecay){
 			$this->checkDecay = true;
-			$this->getLevel()->setBlock($this, $this, false);
+			$this->getWorld()->setBlock($this, $this, false);
 		}
 	}
 
@@ -112,14 +104,14 @@ class Leaves extends Transparent{
 			$ev->call();
 			if($ev->isCancelled() or $this->findLog($this)){
 				$this->checkDecay = false;
-				$this->getLevel()->setBlock($this, $this, false);
+				$this->getWorld()->setBlock($this, $this, false);
 			}else{
-				$this->getLevel()->useBreakOn($this);
+				$this->getWorld()->useBreakOn($this);
 			}
 		}
 	}
 
-	public function place(Item $item, Block $blockReplace, Block $blockClicked, int $face, Vector3 $clickVector, Player $player = null) : bool{
+	public function place(Item $item, Block $blockReplace, Block $blockClicked, int $face, Vector3 $clickVector, ?Player $player = null) : bool{
 		$this->noDecay = true; //artificial leaves don't decay
 		return parent::place($item, $blockReplace, $blockClicked, $face, $clickVector, $player);
 	}
@@ -131,9 +123,9 @@ class Leaves extends Transparent{
 
 		$drops = [];
 		if(mt_rand(1, 20) === 1){ //Saplings
-			$drops[] = ItemFactory::get(Item::SAPLING, $this->woodType);
+			$drops[] = ItemFactory::get(Item::SAPLING, $this->treeType->getMagicNumber());
 		}
-		if(($this->woodType === WoodType::OAK or $this->woodType === WoodType::DARK_OAK) and mt_rand(1, 200) === 1){ //Apples
+		if(($this->treeType === TreeType::OAK() or $this->treeType === TreeType::DARK_OAK()) and mt_rand(1, 200) === 1){ //Apples
 			$drops[] = ItemFactory::get(Item::APPLE);
 		}
 

@@ -26,6 +26,7 @@ namespace pocketmine;
 use pocketmine\metadata\Metadatable;
 use pocketmine\metadata\MetadataValue;
 use pocketmine\nbt\tag\CompoundTag;
+use pocketmine\nbt\tag\LongTag;
 use pocketmine\plugin\Plugin;
 
 class OfflinePlayer implements IPlayer, Metadatable{
@@ -44,9 +45,7 @@ class OfflinePlayer implements IPlayer, Metadatable{
 	public function __construct(Server $server, string $name){
 		$this->server = $server;
 		$this->name = $name;
-		if($this->server->hasOfflinePlayerData($this->name)){
-			$this->namedtag = $this->server->getOfflinePlayerData($this->name);
-		}
+		$this->namedtag = $this->server->getOfflinePlayerData($this->name);
 	}
 
 	public function isOnline() : bool{
@@ -65,7 +64,7 @@ class OfflinePlayer implements IPlayer, Metadatable{
 		return $this->server->isOp($this->name);
 	}
 
-	public function setOp(bool $value){
+	public function setOp(bool $value) : void{
 		if($value === $this->isOp()){
 			return;
 		}
@@ -81,8 +80,8 @@ class OfflinePlayer implements IPlayer, Metadatable{
 		return $this->server->getNameBans()->isBanned($this->name);
 	}
 
-	public function setBanned(bool $value){
-		if($value){
+	public function setBanned(bool $banned) : void{
+		if($banned){
 			$this->server->getNameBans()->addBan($this->name, null, null, null);
 		}else{
 			$this->server->getNameBans()->remove($this->name);
@@ -93,7 +92,7 @@ class OfflinePlayer implements IPlayer, Metadatable{
 		return $this->server->isWhitelisted($this->name);
 	}
 
-	public function setWhitelisted(bool $value){
+	public function setWhitelisted(bool $value) : void{
 		if($value){
 			$this->server->addWhitelist($this->name);
 		}else{
@@ -101,23 +100,23 @@ class OfflinePlayer implements IPlayer, Metadatable{
 		}
 	}
 
-	public function getPlayer(){
+	public function getPlayer() : ?Player{
 		return $this->server->getPlayerExact($this->name);
 	}
 
-	public function getFirstPlayed(){
-		return $this->namedtag instanceof CompoundTag ? $this->namedtag->getLong("firstPlayed", 0, true) : null;
+	public function getFirstPlayed() : ?int{
+		return ($this->namedtag !== null and $this->namedtag->hasTag("firstPlayed", LongTag::class)) ? $this->namedtag->getInt("firstPlayed") : null;
 	}
 
-	public function getLastPlayed(){
-		return $this->namedtag instanceof CompoundTag ? $this->namedtag->getLong("lastPlayed", 0, true) : null;
+	public function getLastPlayed() : ?int{
+		return ($this->namedtag !== null and $this->namedtag->hasTag("lastPlayed", LongTag::class)) ? $this->namedtag->getLong("lastPlayed") : null;
 	}
 
 	public function hasPlayedBefore() : bool{
-		return $this->namedtag instanceof CompoundTag;
+		return $this->namedtag !== null;
 	}
 
-	public function setMetadata(string $metadataKey, MetadataValue $newMetadataValue){
+	public function setMetadata(string $metadataKey, MetadataValue $newMetadataValue) : void{
 		$this->server->getPlayerMetadata()->setMetadata($this, $metadataKey, $newMetadataValue);
 	}
 
@@ -129,7 +128,7 @@ class OfflinePlayer implements IPlayer, Metadatable{
 		return $this->server->getPlayerMetadata()->hasMetadata($this, $metadataKey);
 	}
 
-	public function removeMetadata(string $metadataKey, Plugin $owningPlugin){
+	public function removeMetadata(string $metadataKey, Plugin $owningPlugin) : void{
 		$this->server->getPlayerMetadata()->removeMetadata($this, $metadataKey, $owningPlugin);
 	}
 }

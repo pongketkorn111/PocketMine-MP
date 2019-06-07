@@ -25,6 +25,7 @@ namespace pocketmine\metadata;
 
 use pocketmine\IPlayer;
 use pocketmine\plugin\Plugin;
+use function strtolower;
 
 class PlayerMetadataStore extends MetadataStore{
 
@@ -40,11 +41,11 @@ class PlayerMetadataStore extends MetadataStore{
 		return $this->hasMetadataInternal($this->disambiguate($subject, $metadataKey));
 	}
 
-	public function removeMetadata(IPlayer $subject, string $metadataKey, Plugin $owningPlugin){
+	public function removeMetadata(IPlayer $subject, string $metadataKey, Plugin $owningPlugin) : void{
 		$this->removeMetadataInternal($this->disambiguate($subject, $metadataKey), $owningPlugin);
 	}
 
-	public function setMetadata(IPlayer $subject, string $metadataKey, MetadataValue $newMetadataValue){
+	public function setMetadata(IPlayer $subject, string $metadataKey, MetadataValue $newMetadataValue) : void{
 		$this->setMetadataInternal($this->disambiguate($subject, $metadataKey), $newMetadataValue);
 	}
 }

@@ -29,13 +29,16 @@ use pocketmine\event\entity\ProjectileHitEvent;
 use pocketmine\event\inventory\InventoryPickupArrowEvent;
 use pocketmine\item\Item;
 use pocketmine\item\ItemFactory;
-use pocketmine\level\Level;
 use pocketmine\math\RayTraceResult;
 use pocketmine\nbt\tag\CompoundTag;
 use pocketmine\network\mcpe\protocol\EntityEventPacket;
-use pocketmine\network\mcpe\protocol\LevelSoundEventPacket;
 use pocketmine\network\mcpe\protocol\TakeItemEntityPacket;
+use pocketmine\network\mcpe\protocol\types\EntityMetadataFlags;
 use pocketmine\Player;
+use pocketmine\world\sound\ArrowHitSound;
+use pocketmine\world\World;
+use function mt_rand;
+use function sqrt;
 
 class Arrow extends Projectile{
 	public const NETWORK_ID = self::ARROW;
@@ -64,8 +67,8 @@ class Arrow extends Projectile{
 	/** @var int */
 	protected $collideTicks = 0;
 
-	public function __construct(Level $level, CompoundTag $nbt, ?Entity $shootingEntity = null, bool $critical = false){
-		parent::__construct($level, $nbt, $shootingEntity);
+	public function __construct(World $world, CompoundTag $nbt, ?Entity $shootingEntity = null, bool $critical = false){
+		parent::__construct($world, $nbt, $shootingEntity);
 		$this->setCritical($critical);
 	}
 
@@ -84,11 +87,11 @@ class Arrow extends Projectile{
 	}
 
 	public function isCritical() : bool{
-		return $this->getGenericFlag(self::DATA_FLAG_CRITICAL);
+		return $this->getGenericFlag(EntityMetadataFlags::CRITICAL);
 	}
 
 	public function setCritical(bool $value = true) : void{
-		$this->setGenericFlag(self::DATA_FLAG_CRITICAL, $value);
+		$this->setGenericFlag(EntityMetadataFlags::CRITICAL, $value);
 	}
 
 	public function getResultDamage() : int{
@@ -114,14 +117,14 @@ class Arrow extends Projectile{
 		$this->punchKnockback = $punchKnockback;
 	}
 
-	public function entityBaseTick(int $tickDiff = 1) : bool{
+	protected function entityBaseTick(int $tickDiff = 1) : bool{
 		if($this->closed){
 			return false;
 		}
 
 		$hasUpdate = parent::entityBaseTick($tickDiff);
 
-		if($this->isCollided){
+		if($this->blockHit !== null){
 			$this->collideTicks += $tickDiff;
 			if($this->collideTicks > 1200){
 				$this->flagForDespawn();
@@ -136,7 +139,7 @@ class Arrow extends Projectile{
 
 	protected function onHit(ProjectileHitEvent $event) : void{
 		$this->setCritical(false);
-		$this->level->broadcastLevelSoundEvent($this, LevelSoundEventPacket::SOUND_BOW_HIT);
+		$this->world->addSound($this, new ArrowHitSound());
 	}
 
 	protected function onHitBlock(Block $blockHit, RayTraceResult $hitResult) : void{
@@ -177,7 +180,7 @@ class Arrow extends Projectile{
 		$item = ItemFactory::get(Item::ARROW, 0, 1);
 
 		$playerInventory = $player->getInventory();
-		if($player->isSurvival() and !$playerInventory->canAddItem($item)){
+		if($player->hasFiniteResources() and !$playerInventory->canAddItem($item)){
 			return;
 		}
 

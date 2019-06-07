@@ -23,72 +23,92 @@ declare(strict_types=1);
 
 namespace pocketmine\block;
 
+use pocketmine\block\utils\BlockDataValidator;
+use pocketmine\block\utils\SkullType;
 use pocketmine\item\Item;
 use pocketmine\item\ItemFactory;
+use pocketmine\item\Skull as ItemSkull;
 use pocketmine\math\AxisAlignedBB;
 use pocketmine\math\Facing;
 use pocketmine\math\Vector3;
 use pocketmine\Player;
 use pocketmine\tile\Skull as TileSkull;
-use pocketmine\tile\Tile;
+use function assert;
+use function floor;
 
 class Skull extends Flowable{
-
-	protected $id = self::SKULL_BLOCK;
+	/** @var SkullType */
+	protected $skullType;
 
 	/** @var int */
 	protected $facing = Facing::NORTH;
 
-	public function __construct(){
+	/** @var int */
+	protected $rotation = 0; //TODO: split this into floor skull and wall skull handling
 
+	public function __construct(BlockIdentifier $idInfo, string $name, ?BlockBreakInfo $breakInfo = null){
+		$this->skullType = SkullType::SKELETON(); //TODO: this should be a parameter
+		parent::__construct($idInfo, $name, $breakInfo ?? new BlockBreakInfo(1.0));
 	}
 
 	protected function writeStateToMeta() : int{
 		return $this->facing;
 	}
 
-	public function readStateFromMeta(int $meta) : void{
-		$this->facing = $meta;
+	public function readStateFromData(int $id, int $stateMeta) : void{
+		$this->facing = $stateMeta === 1 ? Facing::UP : BlockDataValidator::readHorizontalFacing($stateMeta);
 	}
 
 	public function getStateBitmask() : int{
 		return 0b111;
 	}
 
-	public function getHardness() : float{
-		return 1;
+	public function readStateFromWorld() : void{
+		parent::readStateFromWorld();
+		$tile = $this->world->getTile($this);
+		if($tile instanceof TileSkull){
+			$this->skullType = $tile->getSkullType();
+			$this->rotation = $tile->getRotation();
+		}
 	}
 
-	public function getName() : string{
-		return "Mob Head";
+	public function writeStateToWorld() : void{
+		parent::writeStateToWorld();
+		//extra block properties storage hack
+		$tile = $this->world->getTile($this);
+		assert($tile instanceof TileSkull);
+		$tile->setRotation($this->rotation);
+		$tile->setSkullType($this->skullType);
+	}
+
+	/**
+	 * @return SkullType
+	 */
+	public function getSkullType() : SkullType{
+		return $this->skullType;
 	}
 
 	protected function recalculateBoundingBox() : ?AxisAlignedBB{
 		//TODO: different bounds depending on attached face
-		static $f = 0.25;
-		return new AxisAlignedBB($f, 0, $f, 1 - $f, 0.5, 1 - $f);
+		return AxisAlignedBB::one()->contract(0.25, 0, 0.25)->trim(Facing::UP, 0.5);
 	}
 
-	public function place(Item $item, Block $blockReplace, Block $blockClicked, int $face, Vector3 $clickVector, Player $player = null) : bool{
+	public function place(Item $item, Block $blockReplace, Block $blockClicked, int $face, Vector3 $clickVector, ?Player $player = null) : bool{
 		if($face === Facing::DOWN){
 			return false;
 		}
 
 		$this->facing = $face;
-		if(parent::place($item, $blockReplace, $blockClicked, $face, $clickVector, $player)){
-			Tile::createTile(Tile::SKULL, $this->getLevel(), TileSkull::createNBT($this, $face, $item, $player));
-			return true;
+		if($item instanceof ItemSkull){
+			$this->skullType = $item->getSkullType(); //TODO: the item should handle this, but this hack is currently needed because of tile mess
 		}
-
-		return false;
+		if($player !== null and $face === Facing::UP){
+			$this->rotation = ((int) floor(($player->yaw * 16 / 360) + 0.5)) & 0xf;
+		}
+		return parent::place($item, $blockReplace, $blockClicked, $face, $clickVector, $player);
 	}
 
-	public function getItem() : Item{
-		$tile = $this->level->getTile($this);
-		return ItemFactory::get(Item::SKULL, $tile instanceof TileSkull ? $tile->getType() : 0);
-	}
-
-	public function isAffectedBySilkTouch() : bool{
-		return false;
+	public function asItem() : Item{
+		return ItemFactory::get(Item::SKULL, $this->skullType->getMagicNumber());
 	}
 }

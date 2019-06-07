@@ -25,25 +25,13 @@ namespace pocketmine\block;
 
 class NoteBlock extends Solid{
 
-	protected $id = self::NOTE_BLOCK;
-
-	public function __construct(){
-
-	}
-
-	public function getName() : string{
-		return "Note Block";
+	public function __construct(BlockIdentifier $idInfo, string $name, ?BlockBreakInfo $breakInfo = null){
+		parent::__construct($idInfo, $name, $breakInfo ?? new BlockBreakInfo(0.8, BlockToolType::TYPE_AXE));
 	}
 
 	public function getFuelTime() : int{
 		return 300;
 	}
 
-	public function getHardness() : float{
-		return 0.8;
-	}
-
-	public function getToolType() : int{
-		return BlockToolType::TYPE_AXE;
-	}
+	//TODO
 }

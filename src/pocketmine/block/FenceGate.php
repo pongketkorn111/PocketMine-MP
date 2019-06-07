@@ -23,87 +23,87 @@ declare(strict_types=1);
 
 namespace pocketmine\block;
 
+use pocketmine\block\utils\BlockDataValidator;
 use pocketmine\item\Item;
-use pocketmine\level\sound\DoorSound;
 use pocketmine\math\AxisAlignedBB;
 use pocketmine\math\Bearing;
 use pocketmine\math\Facing;
 use pocketmine\math\Vector3;
 use pocketmine\Player;
+use pocketmine\world\sound\DoorSound;
 
 class FenceGate extends Transparent{
 	/** @var bool */
 	protected $open = false;
 	/** @var int */
 	protected $facing = Facing::NORTH;
+	/** @var bool */
+	protected $inWall = false;
 
-	protected function writeStateToMeta() : int{
-		return Bearing::fromFacing($this->facing) | ($this->open ? 0x04 : 0);
+	public function __construct(BlockIdentifier $idInfo, string $name, ?BlockBreakInfo $breakInfo = null){
+		parent::__construct($idInfo, $name, $breakInfo ?? new BlockBreakInfo(2.0, BlockToolType::TYPE_AXE));
 	}
 
-	public function readStateFromMeta(int $meta) : void{
-		$this->facing = Bearing::toFacing($meta & 0x03);
-		$this->open = ($meta & 0x04) !== 0;
+	protected function writeStateToMeta() : int{
+		return Bearing::fromFacing($this->facing) |
+			($this->open ? BlockLegacyMetadata::FENCE_GATE_FLAG_OPEN : 0) |
+			($this->inWall ? BlockLegacyMetadata::FENCE_GATE_FLAG_IN_WALL : 0);
+	}
+
+	public function readStateFromData(int $id, int $stateMeta) : void{
+		$this->facing = BlockDataValidator::readLegacyHorizontalFacing($stateMeta & 0x03);
+		$this->open = ($stateMeta & BlockLegacyMetadata::FENCE_GATE_FLAG_OPEN) !== 0;
+		$this->inWall = ($stateMeta & BlockLegacyMetadata::FENCE_GATE_FLAG_IN_WALL) !== 0;
 	}
 
 	public function getStateBitmask() : int{
-		return 0b111;
+		return 0b1111;
 	}
-
-	public function getHardness() : float{
-		return 2;
-	}
-
-	public function getToolType() : int{
-		return BlockToolType::TYPE_AXE;
-	}
-
 
 	protected function recalculateBoundingBox() : ?AxisAlignedBB{
 		if($this->open){
 			return null;
 		}
 
-		if(Facing::axis($this->facing) === Facing::AXIS_Z){
-			return new AxisAlignedBB(
-				0,
-				0,
-				0.375,
-				1,
-				1.5,
-				0.625
-			);
-		}else{
-			return new AxisAlignedBB(
-				0.375,
-				0,
-				0,
-				0.625,
-				1.5,
-				1
-			);
-		}
+		return AxisAlignedBB::one()->extend(Facing::UP, 0.5)->squash(Facing::axis($this->facing), 6 / 16);
 	}
 
-	public function place(Item $item, Block $blockReplace, Block $blockClicked, int $face, Vector3 $clickVector, Player $player = null) : bool{
+	private function checkInWall() : bool{
+		return (
+			$this->getSide(Facing::rotateY($this->facing, false)) instanceof Wall or
+			$this->getSide(Facing::rotateY($this->facing, true)) instanceof Wall
+		);
+	}
+
+	public function place(Item $item, Block $blockReplace, Block $blockClicked, int $face, Vector3 $clickVector, ?Player $player = null) : bool{
 		if($player !== null){
-			$this->facing = Bearing::toFacing($player->getDirection());
+			$this->facing = $player->getHorizontalFacing();
 		}
+
+		$this->inWall = $this->checkInWall();
 
 		return parent::place($item, $blockReplace, $blockClicked, $face, $clickVector, $player);
 	}
 
-	public function onActivate(Item $item, Player $player = null) : bool{
+	public function onNearbyBlockChange() : void{
+		$inWall = $this->checkInWall();
+		if($inWall !== $this->inWall){
+			$this->inWall = $inWall;
+			$this->world->setBlock($this, $this);
+		}
+	}
+
+	public function onInteract(Item $item, int $face, Vector3 $clickVector, ?Player $player = null) : bool{
 		$this->open = !$this->open;
 		if($this->open and $player !== null){
-			$playerFacing = Bearing::toFacing($player->getDirection());
+			$playerFacing = $player->getHorizontalFacing();
 			if($playerFacing === Facing::opposite($this->facing)){
 				$this->facing = $playerFacing;
 			}
 		}
 
-		$this->getLevel()->setBlock($this, $this);
-		$this->level->addSound(new DoorSound($this));
+		$this->getWorld()->setBlock($this, $this);
+		$this->world->addSound($this, new DoorSound());
 		return true;
 	}
 

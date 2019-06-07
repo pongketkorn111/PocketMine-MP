@@ -30,9 +30,12 @@ use pocketmine\network\mcpe\protocol\ResourcePackClientResponsePacket;
 use pocketmine\network\mcpe\protocol\ResourcePackDataInfoPacket;
 use pocketmine\network\mcpe\protocol\ResourcePacksInfoPacket;
 use pocketmine\network\mcpe\protocol\ResourcePackStackPacket;
-use pocketmine\Player;
 use pocketmine\resourcepacks\ResourcePack;
 use pocketmine\resourcepacks\ResourcePackManager;
+use function ceil;
+use function implode;
+use function strpos;
+use function substr;
 
 /**
  * Handler used for the resource packs sequence phase of the session. This handler takes care of downloading resource
@@ -41,8 +44,6 @@ use pocketmine\resourcepacks\ResourcePackManager;
 class ResourcePacksSessionHandler extends SessionHandler{
 	private const PACK_CHUNK_SIZE = 1048576; //1MB
 
-	/** @var Player */
-	private $player;
 	/** @var NetworkSession */
 	private $session;
 	/** @var ResourcePackManager */
@@ -51,8 +52,8 @@ class ResourcePacksSessionHandler extends SessionHandler{
 	/** @var bool[][] uuid => [chunk index => hasSent] */
 	private $downloadedChunks = [];
 
-	public function __construct(Player $player, NetworkSession $session, ResourcePackManager $resourcePackManager){
-		$this->player = $player;
+
+	public function __construct(NetworkSession $session, ResourcePackManager $resourcePackManager){
 		$this->session = $session;
 		$this->resourcePackManager = $resourcePackManager;
 	}
@@ -65,7 +66,7 @@ class ResourcePacksSessionHandler extends SessionHandler{
 	}
 
 	private function disconnectWithError(string $error) : void{
-		$this->player->getServer()->getLogger()->error("Error while downloading resource packs for " . $this->player->getName() . ": " . $error);
+		$this->session->getLogger()->error("Error downloading resource packs: " . $error);
 		$this->session->disconnect("disconnectionScreen.resourcePack");
 	}
 
@@ -77,7 +78,13 @@ class ResourcePacksSessionHandler extends SessionHandler{
 				break;
 			case ResourcePackClientResponsePacket::STATUS_SEND_PACKS:
 				foreach($packet->packIds as $uuid){
-					$pack = $this->resourcePackManager->getPackById(substr($uuid, 0, strpos($uuid, "_")));
+					//dirty hack for mojang's dirty hack for versions
+					$splitPos = strpos($uuid, "_");
+					if($splitPos !== false){
+						$uuid = substr($uuid, 0, $splitPos);
+					}
+					$pack = $this->resourcePackManager->getPackById($uuid);
+
 					if(!($pack instanceof ResourcePack)){
 						//Client requested a resource pack but we don't have it available on the server
 						$this->disconnectWithError("Unknown pack $uuid requested, available packs: " . implode(", ", $this->resourcePackManager->getPackIdList()));

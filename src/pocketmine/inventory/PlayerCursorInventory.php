@@ -31,18 +31,10 @@ class PlayerCursorInventory extends BaseInventory{
 
 	public function __construct(Player $holder){
 		$this->holder = $holder;
-		parent::__construct();
+		parent::__construct(1);
 	}
 
-	public function getName() : string{
-		return "Cursor";
-	}
-
-	public function getDefaultSize() : int{
-		return 1;
-	}
-
-	public function setSize(int $size){
+	public function setSize(int $size) : void{
 		throw new \BadMethodCallException("Cursor can only carry one item at a time");
 	}
 

@@ -26,6 +26,10 @@ namespace pocketmine\command\defaults;
 use pocketmine\command\CommandSender;
 use pocketmine\lang\TranslationContainer;
 use pocketmine\Player;
+use function array_filter;
+use function array_map;
+use function count;
+use function implode;
 
 class ListCommand extends VanillaCommand{
 
@@ -46,7 +50,7 @@ class ListCommand extends VanillaCommand{
 		$playerNames = array_map(function(Player $player){
 			return $player->getName();
 		}, array_filter($sender->getServer()->getOnlinePlayers(), function(Player $player) use ($sender){
-			return $player->isOnline() and (!($sender instanceof Player) or $sender->canSee($player));
+			return !($sender instanceof Player) or $sender->canSee($player);
 		}));
 
 		$sender->sendMessage(new TranslationContainer("commands.players.list", [count($playerNames), $sender->getServer()->getMaxPlayers()]));

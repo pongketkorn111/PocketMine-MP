@@ -23,134 +23,77 @@ declare(strict_types=1);
 
 namespace pocketmine\tile;
 
-use pocketmine\event\block\SignChangeEvent;
+use pocketmine\block\utils\SignText;
+use pocketmine\math\Vector3;
 use pocketmine\nbt\tag\CompoundTag;
 use pocketmine\nbt\tag\StringTag;
-use pocketmine\Player;
-use pocketmine\utils\TextFormat;
+use pocketmine\world\World;
+use function array_pad;
+use function array_slice;
+use function explode;
+use function implode;
+use function mb_scrub;
+use function sprintf;
 
+/**
+ * @deprecated
+ * @see \pocketmine\block\Sign
+ */
 class Sign extends Spawnable{
 	public const TAG_TEXT_BLOB = "Text";
 	public const TAG_TEXT_LINE = "Text%d"; //sprintf()able
 
-	/** @var string[] */
-	protected $text = ["", "", "", ""];
+	public static function fixTextBlob(string $blob) : array{
+		return array_slice(array_pad(explode("\n", $blob), 4, ""), 0, 4);
+	}
 
-	protected function readSaveData(CompoundTag $nbt) : void{
+	/** @var SignText */
+	protected $text;
+
+	public function __construct(World $world, Vector3 $pos){
+		$this->text = new SignText();
+		parent::__construct($world, $pos);
+	}
+
+	public function readSaveData(CompoundTag $nbt) : void{
 		if($nbt->hasTag(self::TAG_TEXT_BLOB, StringTag::class)){ //MCPE 1.2 save format
-			$this->text = array_pad(explode("\n", $nbt->getString(self::TAG_TEXT_BLOB)), 4, "");
-			assert(count($this->text) === 4, "Too many lines!");
+			$this->text = SignText::fromBlob(mb_scrub($nbt->getString(self::TAG_TEXT_BLOB), 'UTF-8'));
 		}else{
-			for($i = 1; $i <= 4; ++$i){
-				$textKey = sprintf(self::TAG_TEXT_LINE, $i);
+			$this->text = new SignText();
+			for($i = 0; $i < SignText::LINE_COUNT; ++$i){
+				$textKey = sprintf(self::TAG_TEXT_LINE, $i + 1);
 				if($nbt->hasTag($textKey, StringTag::class)){
-					$this->text[$i - 1] = $nbt->getString($textKey);
+					$this->text->setLine($i, mb_scrub($nbt->getString($textKey), 'UTF-8'));
 				}
 			}
 		}
 	}
 
 	protected function writeSaveData(CompoundTag $nbt) : void{
-		$nbt->setString(self::TAG_TEXT_BLOB, implode("\n", $this->text));
+		$nbt->setString(self::TAG_TEXT_BLOB, implode("\n", $this->text->getLines()));
 
-		for($i = 1; $i <= 4; ++$i){ //Backwards-compatibility
-			$textKey = sprintf(self::TAG_TEXT_LINE, $i);
-			$nbt->setString($textKey, $this->getLine($i - 1));
+		for($i = 0; $i < SignText::LINE_COUNT; ++$i){ //Backwards-compatibility
+			$textKey = sprintf(self::TAG_TEXT_LINE, $i + 1);
+			$nbt->setString($textKey, $this->text->getLine($i));
 		}
 	}
 
 	/**
-	 * Changes contents of the specific lines to the string provided.
-	 * Leaves contents of the specific lines as is if null is provided.
-	 *
-	 * @param null|string $line1
-	 * @param null|string $line2
-	 * @param null|string $line3
-	 * @param null|string $line4
+	 * @return SignText
 	 */
-	public function setText(?string $line1 = "", ?string $line2 = "", ?string $line3 = "", ?string $line4 = "") : void{
-		if($line1 !== null){
-			$this->text[0] = $line1;
-		}
-		if($line2 !== null){
-			$this->text[1] = $line2;
-		}
-		if($line3 !== null){
-			$this->text[2] = $line3;
-		}
-		if($line4 !== null){
-			$this->text[3] = $line4;
-		}
-
-		$this->onChanged();
-	}
-
-	/**
-	 * @param int    $index 0-3
-	 * @param string $line
-	 * @param bool   $update
-	 */
-	public function setLine(int $index, string $line, bool $update = true) : void{
-		if($index < 0 or $index > 3){
-			throw new \InvalidArgumentException("Index must be in the range 0-3!");
-		}
-
-		$this->text[$index] = $line;
-		if($update){
-			$this->onChanged();
-		}
-	}
-
-	/**
-	 * @param int $index 0-3
-	 *
-	 * @return string
-	 */
-	public function getLine(int $index) : string{
-		if($index < 0 or $index > 3){
-			throw new \InvalidArgumentException("Index must be in the range 0-3!");
-		}
-		return $this->text[$index];
-	}
-
-	/**
-	 * @return string[]
-	 */
-	public function getText() : array{
+	public function getText() : SignText{
 		return $this->text;
 	}
 
-	protected function addAdditionalSpawnData(CompoundTag $nbt) : void{
-		$nbt->setString(self::TAG_TEXT_BLOB, implode("\n", $this->text));
+	/**
+	 * @param SignText $text
+	 */
+	public function setText(SignText $text) : void{
+		$this->text = $text;
+		$this->onChanged();
 	}
 
-	public function updateCompoundTag(CompoundTag $nbt, Player $player) : bool{
-		if($nbt->getString("id") !== Tile::SIGN){
-			return false;
-		}
-
-		if($nbt->hasTag(self::TAG_TEXT_BLOB, StringTag::class)){
-			$lines = array_pad(explode("\n", $nbt->getString(self::TAG_TEXT_BLOB)), 4, "");
-		}else{
-			$lines = [
-				$nbt->getString(sprintf(self::TAG_TEXT_LINE, 1)),
-				$nbt->getString(sprintf(self::TAG_TEXT_LINE, 2)),
-				$nbt->getString(sprintf(self::TAG_TEXT_LINE, 3)),
-				$nbt->getString(sprintf(self::TAG_TEXT_LINE, 4))
-			];
-		}
-
-		$removeFormat = $player->getRemoveFormat();
-
-		$ev = new SignChangeEvent($this->getBlock(), $player, array_map(function(string $line) use ($removeFormat){ return TextFormat::clean($line, $removeFormat); }, $lines));
-		$ev->call();
-
-		if(!$ev->isCancelled()){
-			$this->setText(...$ev->getLines());
-
-			return true;
-		}else{
-			return false;
-		}
+	protected function addAdditionalSpawnData(CompoundTag $nbt) : void{
+		$nbt->setString(self::TAG_TEXT_BLOB, implode("\n", $this->text->getLines()));
 	}
 }

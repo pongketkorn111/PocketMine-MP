@@ -27,29 +27,7 @@ use pocketmine\item\TieredTool;
 
 class BrickStairs extends Stair{
 
-	protected $id = self::BRICK_STAIRS;
-
-	public function __construct(){
-
-	}
-
-	public function getHardness() : float{
-		return 2;
-	}
-
-	public function getBlastResistance() : float{
-		return 30;
-	}
-
-	public function getToolType() : int{
-		return BlockToolType::TYPE_PICKAXE;
-	}
-
-	public function getToolHarvestLevel() : int{
-		return TieredTool::TIER_WOODEN;
-	}
-
-	public function getName() : string{
-		return "Brick Stairs";
+	public function __construct(BlockIdentifier $idInfo, string $name, ?BlockBreakInfo $breakInfo = null){
+		parent::__construct($idInfo, $name, $breakInfo ?? new BlockBreakInfo(2.0, BlockToolType::TYPE_PICKAXE, TieredTool::TIER_WOODEN, 30.0));
 	}
 }

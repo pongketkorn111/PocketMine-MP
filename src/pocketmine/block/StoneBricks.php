@@ -26,20 +26,8 @@ namespace pocketmine\block;
 use pocketmine\item\TieredTool;
 
 class StoneBricks extends Solid{
-	public const NORMAL = 0;
-	public const MOSSY = 1;
-	public const CRACKED = 2;
-	public const CHISELED = 3;
 
-	public function getHardness() : float{
-		return 1.5;
-	}
-
-	public function getToolType() : int{
-		return BlockToolType::TYPE_PICKAXE;
-	}
-
-	public function getToolHarvestLevel() : int{
-		return TieredTool::TIER_WOODEN;
+	public function __construct(BlockIdentifier $idInfo, string $name, ?BlockBreakInfo $breakInfo = null){
+		parent::__construct($idInfo, $name, $breakInfo ?? new BlockBreakInfo(1.5, BlockToolType::TYPE_PICKAXE, TieredTool::TIER_WOODEN, 30.0));
 	}
 }

@@ -24,47 +24,31 @@ declare(strict_types=1);
 namespace pocketmine\block;
 
 use pocketmine\entity\Entity;
-use pocketmine\network\mcpe\protocol\LevelSoundEventPacket;
+use pocketmine\world\sound\BucketEmptyWaterSound;
+use pocketmine\world\sound\BucketFillWaterSound;
+use pocketmine\world\sound\Sound;
 
 class Water extends Liquid{
-
-	protected $id = self::FLOWING_WATER;
-
-	public function __construct(){
-
-	}
-
-	public function getName() : string{
-		return "Water";
-	}
 
 	public function getLightFilter() : int{
 		return 2;
 	}
 
-	public function getStillForm() : Block{
-		return BlockFactory::get(Block::STILL_WATER, $this->getDamage());
+	public function getBucketFillSound() : Sound{
+		return new BucketFillWaterSound();
 	}
 
-	public function getFlowingForm() : Block{
-		return BlockFactory::get(Block::FLOWING_WATER, $this->getDamage());
-	}
-
-	public function getBucketFillSound() : int{
-		return LevelSoundEventPacket::SOUND_BUCKET_FILL_WATER;
-	}
-
-	public function getBucketEmptySound() : int{
-		return LevelSoundEventPacket::SOUND_BUCKET_EMPTY_WATER;
+	public function getBucketEmptySound() : Sound{
+		return new BucketEmptyWaterSound();
 	}
 
 	public function tickRate() : int{
 		return 5;
 	}
 
-	public function onEntityCollide(Entity $entity) : void{
+	public function onEntityInside(Entity $entity) : void{
 		$entity->resetFallDistance();
-		if($entity->fireTicks > 0){
+		if($entity->isOnFire()){
 			$entity->extinguish();
 		}
 

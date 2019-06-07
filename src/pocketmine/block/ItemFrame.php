@@ -23,88 +23,182 @@ declare(strict_types=1);
 
 namespace pocketmine\block;
 
+use pocketmine\block\utils\BlockDataValidator;
 use pocketmine\item\Item;
 use pocketmine\math\Facing;
 use pocketmine\math\Vector3;
 use pocketmine\Player;
 use pocketmine\tile\ItemFrame as TileItemFrame;
-use pocketmine\tile\Tile;
+use function lcg_value;
 
 class ItemFrame extends Flowable{
-	protected $id = Block::ITEM_FRAME_BLOCK;
-
-	protected $itemId = Item::ITEM_FRAME;
+	public const ROTATIONS = 8;
 
 	/** @var int */
 	protected $facing = Facing::NORTH;
+	/** @var bool */
+	protected $hasMap = false; //makes frame appear large if set
+	/** @var Item|null */
+	protected $framedItem = null;
+	/** @var int */
+	protected $itemRotation = 0;
+	/** @var float */
+	protected $itemDropChance = 1.0;
 
-	public function __construct(){
-
+	public function __construct(BlockIdentifier $idInfo, string $name, ?BlockBreakInfo $breakInfo = null){
+		parent::__construct($idInfo, $name, $breakInfo ?? new BlockBreakInfo(0.25));
 	}
 
 	protected function writeStateToMeta() : int{
-		return 5 - $this->facing;
+		return (5 - $this->facing) | ($this->hasMap ? BlockLegacyMetadata::ITEM_FRAME_FLAG_HAS_MAP : 0);
 	}
 
-	public function readStateFromMeta(int $meta) : void{
-		$this->facing = 5 - $meta;
+	public function readStateFromData(int $id, int $stateMeta) : void{
+		$this->facing = BlockDataValidator::read5MinusHorizontalFacing($stateMeta);
+		$this->hasMap = ($stateMeta & BlockLegacyMetadata::ITEM_FRAME_FLAG_HAS_MAP) !== 0;
+	}
+
+	public function readStateFromWorld() : void{
+		parent::readStateFromWorld();
+		$tile = $this->world->getTile($this);
+		if($tile instanceof TileItemFrame){
+			$this->framedItem = $tile->getItem();
+			if($this->framedItem->isNull()){
+				$this->framedItem = null;
+			}
+			$this->itemRotation = $tile->getItemRotation() % self::ROTATIONS;
+			$this->itemDropChance = $tile->getItemDropChance();
+		}
+	}
+
+	public function writeStateToWorld() : void{
+		parent::writeStateToWorld();
+		$tile = $this->world->getTile($this);
+		if($tile instanceof TileItemFrame){
+			$tile->setItem($this->framedItem);
+			$tile->setItemRotation($this->itemRotation);
+			$tile->setItemDropChance($this->itemDropChance);
+		}
 	}
 
 	public function getStateBitmask() : int{
-		return 0b11;
+		return 0b111;
 	}
 
-	public function getName() : string{
-		return "Item Frame";
+	/**
+	 * @return int
+	 */
+	public function getFacing() : int{
+		return $this->facing;
 	}
 
-	public function onActivate(Item $item, Player $player = null) : bool{
-		$tile = $this->level->getTile($this);
-		if($tile instanceof TileItemFrame){
-			if($tile->hasItem()){
-				$tile->setItemRotation(($tile->getItemRotation() + 1) % 8);
-			}elseif(!$item->isNull()){
-				$tile->setItem($item->pop());
-			}
+	/**
+	 * @param int $facing
+	 */
+	public function setFacing(int $facing) : void{
+		$this->facing = $facing;
+	}
+
+	/**
+	 * @return Item|null
+	 */
+	public function getFramedItem() : ?Item{
+		return $this->framedItem !== null ? clone $this->framedItem : null;
+	}
+
+	/**
+	 * @param Item|null $item
+	 */
+	public function setFramedItem(?Item $item) : void{
+		if($item === null or $item->isNull()){
+			$this->framedItem = null;
+			$this->itemRotation = 0;
+		}else{
+			$this->framedItem = clone $item;
+		}
+	}
+
+	/**
+	 * @return int
+	 */
+	public function getItemRotation() : int{
+		return $this->itemRotation;
+	}
+
+	/**
+	 * @param int $itemRotation
+	 */
+	public function setItemRotation(int $itemRotation) : void{
+		$this->itemRotation = $itemRotation;
+	}
+
+	/**
+	 * @return float
+	 */
+	public function getItemDropChance() : float{
+		return $this->itemDropChance;
+	}
+
+	/**
+	 * @param float $itemDropChance
+	 */
+	public function setItemDropChance(float $itemDropChance) : void{
+		$this->itemDropChance = $itemDropChance;
+	}
+
+	public function onInteract(Item $item, int $face, Vector3 $clickVector, ?Player $player = null) : bool{
+		if($this->framedItem !== null){
+			$this->itemRotation = ($this->itemRotation + 1) % self::ROTATIONS;
+		}elseif(!$item->isNull()){
+			$this->framedItem = $item->pop();
+		}else{
+			return true;
 		}
 
+		$this->world->setBlock($this, $this);
+
+		return true;
+	}
+
+	public function onAttack(Item $item, int $face, ?Player $player = null) : bool{
+		if($this->framedItem === null){
+			return false;
+		}
+		if(lcg_value() <= $this->itemDropChance){
+			$this->world->dropItem($this->add(0.5, 0.5, 0.5), $this->getFramedItem());
+		}
+		$this->setFramedItem(null);
+		$this->world->setBlock($this, $this);
 		return true;
 	}
 
 	public function onNearbyBlockChange() : void{
 		if(!$this->getSide(Facing::opposite($this->facing))->isSolid()){
-			$this->level->useBreakOn($this);
+			$this->world->useBreakOn($this);
 		}
 	}
 
-	public function place(Item $item, Block $blockReplace, Block $blockClicked, int $face, Vector3 $clickVector, Player $player = null) : bool{
+	public function place(Item $item, Block $blockReplace, Block $blockClicked, int $face, Vector3 $clickVector, ?Player $player = null) : bool{
 		if($face === Facing::DOWN or $face === Facing::UP or !$blockClicked->isSolid()){
 			return false;
 		}
 
 		$this->facing = $face;
 
-		if(parent::place($item, $blockReplace, $blockClicked, $face, $clickVector, $player)){
-			Tile::createTile(Tile::ITEM_FRAME, $this->getLevel(), TileItemFrame::createNBT($this, $face, $item, $player));
-			return true;
-		}
-
-		return false;
-
+		return parent::place($item, $blockReplace, $blockClicked, $face, $clickVector, $player);
 	}
 
 	public function getDropsForCompatibleTool(Item $item) : array{
 		$drops = parent::getDropsForCompatibleTool($item);
-
-		$tile = $this->level->getTile($this);
-		if($tile instanceof TileItemFrame){
-			$tileItem = $tile->getItem();
-			if(lcg_value() <= $tile->getItemDropChance() and !$tileItem->isNull()){
-				$drops[] = $tileItem;
-			}
+		if($this->framedItem !== null and lcg_value() <= $this->itemDropChance){
+			$drops[] = clone $this->framedItem;
 		}
 
 		return $drops;
+	}
+
+	public function getPickedItem() : Item{
+		return $this->framedItem !== null ? clone $this->framedItem : parent::getPickedItem();
 	}
 
 	public function isAffectedBySilkTouch() : bool{

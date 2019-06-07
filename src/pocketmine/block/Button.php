@@ -23,11 +23,13 @@ declare(strict_types=1);
 
 namespace pocketmine\block;
 
+use pocketmine\block\utils\BlockDataValidator;
 use pocketmine\item\Item;
 use pocketmine\math\Facing;
 use pocketmine\math\Vector3;
-use pocketmine\network\mcpe\protocol\LevelSoundEventPacket;
 use pocketmine\Player;
+use pocketmine\world\sound\RedstonePowerOffSound;
+use pocketmine\world\sound\RedstonePowerOnSound;
 
 abstract class Button extends Flowable{
 
@@ -36,25 +38,21 @@ abstract class Button extends Flowable{
 	/** @var bool */
 	protected $powered = false;
 
-	public function __construct(){
-
-	}
-
 	protected function writeStateToMeta() : int{
-		return $this->facing | ($this->powered ? 0x08 : 0);
+		return $this->facing | ($this->powered ? BlockLegacyMetadata::BUTTON_FLAG_POWERED : 0);
 	}
 
-	public function readStateFromMeta(int $meta) : void{
+	public function readStateFromData(int $id, int $stateMeta) : void{
 		//TODO: in PC it's (6 - facing) for every meta except 0 (down)
-		$this->facing = $meta & 0x07;
-		$this->powered = ($meta & 0x08) !== 0;
+		$this->facing = BlockDataValidator::readFacing($stateMeta & 0x07);
+		$this->powered = ($stateMeta & BlockLegacyMetadata::BUTTON_FLAG_POWERED) !== 0;
 	}
 
 	public function getStateBitmask() : int{
 		return 0b1111;
 	}
 
-	public function place(Item $item, Block $blockReplace, Block $blockClicked, int $face, Vector3 $clickVector, Player $player = null) : bool{
+	public function place(Item $item, Block $blockReplace, Block $blockClicked, int $face, Vector3 $clickVector, ?Player $player = null) : bool{
 		//TODO: check valid target block
 		$this->facing = $face;
 		return parent::place($item, $blockReplace, $blockClicked, $face, $clickVector, $player);
@@ -62,12 +60,12 @@ abstract class Button extends Flowable{
 
 	abstract protected function getActivationTime() : int;
 
-	public function onActivate(Item $item, Player $player = null) : bool{
+	public function onInteract(Item $item, int $face, Vector3 $clickVector, ?Player $player = null) : bool{
 		if(!$this->powered){
 			$this->powered = true;
-			$this->level->setBlock($this, $this);
-			$this->level->scheduleDelayedBlockUpdate($this, $this->getActivationTime());
-			$this->level->broadcastLevelSoundEvent($this->add(0.5, 0.5, 0.5), LevelSoundEventPacket::SOUND_POWER_ON);
+			$this->world->setBlock($this, $this);
+			$this->world->scheduleDelayedBlockUpdate($this, $this->getActivationTime());
+			$this->world->addSound($this->add(0.5, 0.5, 0.5), new RedstonePowerOnSound());
 		}
 
 		return true;
@@ -76,8 +74,8 @@ abstract class Button extends Flowable{
 	public function onScheduledUpdate() : void{
 		if($this->powered){
 			$this->powered = false;
-			$this->level->setBlock($this, $this);
-			$this->level->broadcastLevelSoundEvent($this->add(0.5, 0.5, 0.5), LevelSoundEventPacket::SOUND_POWER_OFF);
+			$this->world->setBlock($this, $this);
+			$this->world->addSound($this->add(0.5, 0.5, 0.5), new RedstonePowerOffSound());
 		}
 	}
 }

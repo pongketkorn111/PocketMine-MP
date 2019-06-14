@@ -33,11 +33,7 @@ PLUGINS_DIR="$DATA_DIR/plugins"
 rm -rf "$DATA_DIR"
 rm PocketMine-MP.phar 2> /dev/null
 
-cd tests/plugins/PocketMine-DevTools
-"$PHP_BINARY" -dphar.readonly=0 ./src/DevTools/ConsoleScript.php --make ./ --relative ./ --out ../../../DevTools.phar
-cd ../../..
-
-"$PHP_BINARY" -dphar.readonly=0 DevTools.phar --make src,vendor --relative ./ --entry src/pocketmine/PocketMine.php --out PocketMine-MP.phar
+"$PHP_BINARY" ./build/build-all.php --output ./
 if [ -f PocketMine-MP.phar ]; then
 	echo Server phar created successfully.
 else
